@@ -10,6 +10,7 @@ import GalleryPage from '@/pages/GalleryPage'
 import ReviewsPage from '@/pages/ReviewsPage'
 import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
+import CustomizerPage from '@/pages/CustomizerPage'
 
 export default function App() {
     return (
@@ -27,6 +28,7 @@ export default function App() {
                             <Route path="/reviews" element={<ReviewsPage />} />
                             <Route path="/auth/login" element={<LoginPage />} />
                             <Route path="/auth/signup" element={<SignupPage />} />
+                            <Route path="/customize" element={<CustomizerPage />} />
                         </Routes>
                     </main>
                     <Footer />

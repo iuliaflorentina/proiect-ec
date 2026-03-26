@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Star, ShoppingCart, SlidersHorizontal, X } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Star, ShoppingCart, SlidersHorizontal, X, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { products } from '@/lib/data'
@@ -11,14 +11,26 @@ const CATEGORIES = ['All', 'sneakers', 'hoodies', 'jackets', 'tees']
 export default function ProductsPage() {
     const [activeCategory, setActiveCategory] = useState('All')
     const [customizableOnly, setCustomizableOnly] = useState(false)
+    const [searchParams, setSearchParams] = useSearchParams()
     const { addItem } = useCart()
     const [added, setAdded] = useState({})
 
-    const filtered = products.filter((p) => {
-        if (activeCategory !== 'All' && p.category !== activeCategory) return false
-        if (customizableOnly && !p.customizable) return false
-        return true
-    })
+    const searchQuery = searchParams.get('search') || ''
+
+    const filtered = useMemo(() => {
+        return products.filter((p) => {
+            if (activeCategory !== 'All' && p.category !== activeCategory) return false
+            if (customizableOnly && !p.customizable) return false
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase()
+                const matchesName = p.name.toLowerCase().includes(query)
+                const matchesCategory = p.category.toLowerCase().includes(query)
+                const matchesArtist = p.artist?.toLowerCase().includes(query)
+                if (!matchesName && !matchesCategory && !matchesArtist) return false
+            }
+            return true
+        })
+    }, [activeCategory, customizableOnly, searchQuery])
 
     const handleAdd = (product) => {
         addItem(product)
@@ -31,11 +43,26 @@ export default function ProductsPage() {
             {/* Header */}
             <div className="mb-8">
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                    Shop Collection
+                    {searchQuery ? `Results for "${searchQuery}"` : 'Shop Collection'}
                 </h1>
-                <p className="mt-2 text-muted-foreground">
-                    {filtered.length} pieces of wearable art
-                </p>
+                <div className="mt-2 flex items-center justify-between">
+                    <p className="text-muted-foreground">
+                        {filtered.length} {filtered.length === 1 ? 'piece' : 'pieces'} of wearable art
+                    </p>
+                    {searchQuery && (
+                        <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => {
+                                searchParams.delete('search')
+                                setSearchParams(searchParams)
+                            }}
+                            className="text-primary hover:text-primary/80 h-auto p-0 flex items-center gap-1"
+                        >
+                            <X className="h-3 w-3" /> Clear search
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Filters */}
@@ -46,8 +73,8 @@ export default function ProductsPage() {
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
                             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeCategory === cat
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40'
                                 }`}
                         >
                             {cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -57,8 +84,8 @@ export default function ProductsPage() {
                 <button
                     onClick={() => setCustomizableOnly(!customizableOnly)}
                     className={`ml-auto flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${customizableOnly
-                            ? 'bg-primary/10 border-primary/30 text-primary'
-                            : 'border-border text-muted-foreground hover:text-foreground'
+                        ? 'bg-primary/10 border-primary/30 text-primary'
+                        : 'border-border text-muted-foreground hover:text-foreground'
                         }`}
                 >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -104,8 +131,8 @@ export default function ProductsPage() {
                                         <Star
                                             key={i}
                                             className={`h-3 w-3 ${i < Math.floor(product.rating)
-                                                    ? 'fill-primary text-primary'
-                                                    : 'fill-muted text-muted'
+                                                ? 'fill-primary text-primary'
+                                                : 'fill-muted text-muted'
                                                 }`}
                                         />
                                     ))}
@@ -123,14 +150,23 @@ export default function ProductsPage() {
                                         </span>
                                     )}
                                 </div>
-                                <Button
-                                    size="icon"
-                                    onClick={() => handleAdd(product)}
-                                    className={`h-9 w-9 transition-all ${added[product.id] ? 'bg-green-600 hover:bg-green-600' : ''
-                                        }`}
-                                >
-                                    {added[product.id] ? '✓' : <ShoppingCart className="h-4 w-4" />}
-                                </Button>
+                                <div className="flex gap-2">
+                                    {product.customizable && (
+                                        <Link to="/customize">
+                                            <Button variant="outline" size="sm" className="h-9 px-3 text-xs">
+                                                Customize
+                                            </Button>
+                                        </Link>
+                                    )}
+                                    <Button
+                                        size="icon"
+                                        onClick={() => handleAdd(product)}
+                                        className={`h-9 w-9 transition-all ${added[product.id] ? 'bg-green-600 hover:bg-green-600' : ''
+                                            }`}
+                                    >
+                                        {added[product.id] ? '✓' : <ShoppingCart className="h-4 w-4" />}
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>
