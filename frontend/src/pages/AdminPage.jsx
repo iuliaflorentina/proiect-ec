@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette } from 'lucide-react'
+import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { GalleryItemModal } from '@/components/admin/GalleryItemModal'
@@ -355,6 +355,7 @@ export default function AdminPage() {
                     <tr className="border-b border-border bg-muted/40">
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Order ID</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Customer</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Shipping</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Items</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Total</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Date</th>
@@ -371,6 +372,16 @@ export default function AdminPage() {
                             {order.shipping?.firstName} {order.shipping?.lastName}
                           </div>
                           <div className="text-xs text-muted-foreground">{order.userEmail}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                              <Home className="h-3 w-3 text-primary" /> Home
+                            </div>
+                            <div className="text-xs text-muted-foreground truncate max-w-[150px]">
+                              {order.shipping?.address}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="space-y-2">
@@ -423,11 +434,15 @@ export default function AdminPage() {
                           ${parseFloat(order.total || 0).toFixed(2)}
                         </td>
                         <td className="px-6 py-4 text-muted-foreground">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
                             <Calendar className="h-3.5 w-3.5" />
-                            {order.createdAt
-                              ? new Date(order.createdAt._seconds * 1000).toLocaleDateString()
-                              : '—'}
+                            {(function() {
+                              if (!order.createdAt) return '—'
+                              const s = order.createdAt._seconds ?? order.createdAt.seconds
+                              if (s !== undefined) return new Date(s * 1000).toLocaleDateString()
+                              const d = new Date(order.createdAt)
+                              return isNaN(d.getTime()) ? '—' : d.toLocaleDateString()
+                            })()}
                           </div>
                         </td>
                       </tr>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { User, Package, LogOut, Calendar, ShoppingBag } from 'lucide-react'
+import { User, Package, LogOut, Calendar, ShoppingBag, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 
@@ -106,11 +106,13 @@ export default function ProfilePage() {
             {orders.map((order) => {
               const status = order.status || 'pending'
               const statusCls = STATUS_STYLES[status] || STATUS_STYLES.default
-              const date = order.createdAt
-                ? new Date(order.createdAt._seconds * 1000).toLocaleDateString(undefined, {
-                    year: 'numeric', month: 'short', day: 'numeric'
-                  })
-                : '—'
+              const date = (function() {
+                if (!order.createdAt) return '—'
+                const s = order.createdAt._seconds ?? order.createdAt.seconds
+                if (s !== undefined) return new Date(s * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+                const d = new Date(order.createdAt)
+                return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+              })()
               return (
                 <div key={order.id} className="rounded-xl border border-border bg-card p-5">
                   {/* Order top row */}
@@ -148,8 +150,14 @@ export default function ProfilePage() {
                   {/* Shipping */}
                   {order.shipping && (
                     <div className="mb-4 rounded-lg bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-                      Ships to: {order.shipping.address}, {order.shipping.city},{' '}
-                      {order.shipping.zip} {order.shipping.country}
+                      <div className="flex items-start gap-3">
+                        <Home className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-foreground">Shipping Address</p>
+                          <p>{order.shipping.address}, {order.shipping.city}</p>
+                          <p>{order.shipping.zip} {order.shipping.country}</p>
+                        </div>
+                      </div>
                     </div>
                   )}
 
