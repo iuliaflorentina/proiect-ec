@@ -1,8 +1,0 @@
-Model Information:
-* title:	Miles morales shoes
-* source:	https://sketchfab.com/3d-models/miles-morales-shoes-95acae0e49c044f0a05de16cdfc20ba4
-* author:	Frrixx_ (https://sketchfab.com/Thefooxy)
-
-Model License:
-* license type:	SKETCHFAB Standard (https://sketchfab.com/licenses)
-* requirements:	Under basic restrictions, use worldwide, on all types of media, commercially or not, and in all types of derivative works
