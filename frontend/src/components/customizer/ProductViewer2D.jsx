@@ -67,7 +67,7 @@ const ProductViewer2D = ({ product, frontOrBack, stickers, setStickers, selected
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
     // Select image based on front or back view
-    const imageUrl = product?.images[frontOrBack] || product?.image
+    const imageUrl = product?.images?.[frontOrBack] || product?.image
     const [productImage] = useImage(imageUrl, 'Anonymous')
 
     useEffect(() => {

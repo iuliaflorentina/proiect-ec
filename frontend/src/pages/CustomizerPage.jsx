@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-    ChevronLeft, Image as ImageIcon, Download, ShoppingCart, Trash2, Sparkles, ArrowRight, Upload, Layers, MoveUp, MoveDown, Copy, Settings2, Loader2
+    ChevronLeft, Image as ImageIcon, Download, ShoppingCart, Trash2, Sparkles, ArrowRight, Upload, Layers, MoveUp, MoveDown, Copy, Settings2, Loader2, LayoutDashboard
 } from 'lucide-react'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '@/lib/firebase'
 import { Button } from '@/components/ui/button'
 import { useCart } from '@/context/CartContext'
+import { useAuth } from '@/context/AuthContext'
 
 import ProductViewer2D from '@/components/customizer/ProductViewer2D'
 import ProductViewer3D from '@/components/customizer/ProductViewer3D'
@@ -19,60 +20,51 @@ const STICKERS = [
     { id: 'heart', src: 'https://cdn-icons-png.flaticon.com/512/1077/1077035.png' },
 ]
 
-const PRODUCTS = [
-    {
-        id: 'jordan',
-        name: 'Air Jordan 1',
-        type: '3d', // Interactive 3D Model
-        description: 'Iconic basketball sneaker ready for your custom 3D design mapping and colorways.',
-        image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=800&q=80',
-        images: {
-            front: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=800&q=80',
-            back: 'https://images.unsplash.com/photo-1600185365483-26d7a4cc7519?w=800&q=80'
-        },
-        price: 150
-    },
-    {
-        id: 'tshirt',
-        name: 'Custom T-Shirt',
-        type: '3d',
-        description: 'Premium cotton t-shirt ready for your custom 3D design mapping and colorways.',
-        modelPath: '/models/tshirt_new.glb',
-        colors: ['#ffffff', '#1a1a1a'],
-        image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800&q=80',
-        images: {
-            front: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800&q=80',
-            back: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=800&q=80'
-        },
-        price: 35
-    },
-    {
-        id: 'jacket',
-        name: 'Denim Jacket',
-        type: '3d',
-        description: 'Vintage wash denim jacket for true expression.',
-        modelPath: '/models/jacket_002.glb',
-        colors: ['#3b5998', '#1a1a1a', '#ffffff'],
-        image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&q=80',
-        images: {
-            front: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&q=80',
-            back: 'https://images.unsplash.com/photo-1544441893-675973e31985?w=800&q=80'
-        },
-        price: 85
-    }
-]
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const CustomizerPage = () => {
     const { addItem } = useCart()
+    const { isAdmin } = useAuth()
     const location = useLocation()
+    const navigate = useNavigate()
+
+    const [products, setProducts] = useState([])
+    const [isLoading, setIsLoading] = useState(false)
 
     // Selection State - Initialize from location state if available (for cart/admin view)
     const [selectedProduct, setSelectedProduct] = useState(() => {
-        if (location.state?.productId) {
-            return PRODUCTS.find(p => p.id === location.state.productId) || null
+        if (location.state?.productPayload) {
+            return location.state.productPayload
         }
         return null
     })
+
+    const fetchProducts = async () => {
+        try {
+            setIsLoading(true)
+            const res = await fetch(`${API}/api/products`)
+            if (res.ok) {
+                const data = await res.json()
+                setProducts(data)
+                
+                // If we only had a productId but no payload, find it now
+                if (!selectedProduct && location.state?.productId) {
+                    const found = data.find(p => p.id === location.state.productId)
+                    if (found) setSelectedProduct(found)
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching products:', error)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        if (!selectedProduct) {
+            fetchProducts()
+        }
+    }, [selectedProduct])
     
     const [activeView, setActiveView] = useState('front') // 'front' or 'back' for 2D
 
@@ -94,6 +86,7 @@ const CustomizerPage = () => {
     })
 
     const [isSaving, setIsSaving] = useState(false)
+    const isReadOnly = location.state?.readOnly === true
     const viewerRef = useRef()
 
     const currentStickers = stickers[activeView] || []
@@ -261,35 +254,51 @@ const CustomizerPage = () => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {PRODUCTS.map(product => (
-                            <div
-                                key={product.id}
-                                className="group relative bg-card border border-border rounded-xl aspect-[4/5] overflow-hidden cursor-pointer hover:border-primary/50 transition-colors shadow-sm hover:shadow-md"
-                                onClick={() => handleProductSelect(product)}
-                            >
-                                <img
-                                    src={product.image}
-                                    alt={product.name}
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                />
-                                {product.type === '3d' && (
-                                    <div className="absolute top-4 right-4 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1 z-10">
-                                        <Layers className="h-3 w-3" />
-                                        3D MODEL
-                                    </div>
-                                )}
-                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 via-background/70 to-transparent p-6 pt-16">
-                                    <h3 className="text-xl font-bold text-foreground mb-2">{product.name}</h3>
-                                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{product.description}</p>
-                                    <div className="flex items-center justify-between mt-auto">
-                                        <span className="font-semibold text-primary text-lg">${product.price.toFixed(2)}</span>
-                                        <Button size="sm" className="bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-colors group-hover:bg-primary group-hover:text-primary-foreground shadow-none">
-                                            Customize <ArrowRight className="ml-2 h-4 w-4" />
-                                        </Button>
+                        {isLoading ? (
+                            <div className="col-span-full py-20 text-center text-muted-foreground flex flex-col items-center gap-4">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                <p>Loading canvas options...</p>
+                            </div>
+                        ) : products.filter(p => p.type === '3d').length > 0 ? (
+                            products.filter(p => p.type === '3d').map(product => (
+                                <div
+                                    key={product.id}
+                                    className="group relative bg-card border border-border rounded-xl aspect-[4/5] overflow-hidden cursor-pointer hover:border-primary/50 transition-colors shadow-sm hover:shadow-md"
+                                    onClick={() => handleProductSelect(product)}
+                                >
+                                    <img
+                                        src={product.image}
+                                        alt={product.name}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                    />
+                                    {product.type === '3d' && (
+                                        <div className="absolute top-4 right-4 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1 z-10">
+                                            <Layers className="h-3 w-3" />
+                                            3D MODEL
+                                        </div>
+                                    )}
+                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 via-background/70 to-transparent p-6 pt-16">
+                                        <h3 className="text-xl font-bold text-foreground mb-2">{product.name}</h3>
+                                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{product.description}</p>
+                                        <div className="flex items-center justify-between mt-auto">
+                                            <span className="font-semibold text-primary text-lg">${parseFloat(product.price).toFixed(2)}</span>
+                                            <Button size="sm" className="bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-colors group-hover:bg-primary group-hover:text-primary-foreground shadow-none">
+                                                Customize <ArrowRight className="ml-2 h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
+                            ))
+                        ) : (
+                            <div className="col-span-full py-20 text-center text-muted-foreground">
+                                <p>No products found in the store.</p>
+                                {isAdmin && (
+                                    <Button variant="link" onClick={() => navigate('/')} className="mt-2">
+                                        Go to Home to Add Products
+                                    </Button>
+                                )}
                             </div>
-                        ))}
+                        )}
                     </div>
                 </div>
             </div>
@@ -302,14 +311,25 @@ const CustomizerPage = () => {
         <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-background">
             <header className="border-b border-border bg-background/50 backdrop-blur-md px-6 py-3 flex items-center justify-between z-10">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="sm" className="gap-2 hover:bg-secondary/20" onClick={() => setSelectedProduct(null)}>
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="gap-2 hover:bg-secondary/20" 
+                        onClick={() => {
+                            if (location.state?.productPayload) {
+                                navigate(-1)
+                            } else {
+                                setSelectedProduct(null)
+                            }
+                        }}
+                    >
                         <ChevronLeft className="h-4 w-4" />
                         Back
                     </Button>
                     <div className="h-6 w-px bg-border hidden sm:block" />
                     <h1 className="text-sm font-semibold text-foreground uppercase tracking-widest hidden sm:flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-primary" />
-                        {selectedProduct.name} {selectedProduct.type === '3d' ? '(3D)' : ''}
+                        {selectedProduct.name} {(selectedProduct.type === '3d' || !!selectedProduct.modelPath) ? '(3D)' : ''}
                     </h1>
                 </div>
 
@@ -331,24 +351,39 @@ const CustomizerPage = () => {
                 )}
 
                 <div className="flex items-center gap-3">
-                    <span className="font-semibold text-primary mr-4 hidden sm:block">${selectedProduct.price.toFixed(2)}</span>
-                    <Button variant="outline" size="sm" className="gap-2 hidden md:flex">
-                        <Download className="h-4 w-4" />
-                        Save
-                    </Button>
-                    <Button size="sm" className="gap-2" onClick={handleAddToCart} disabled={isSaving}>
-                        {isSaving ? (
-                            <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                Add to Cart
-                                <ShoppingCart className="h-4 w-4" />
-                            </>
-                        )}
-                    </Button>
+                    <span className="font-semibold text-primary mr-4 hidden sm:block">${Number(selectedProduct.price || 0).toFixed(2)}</span>
+                    
+                    {isReadOnly ? (
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs font-semibold px-3 py-1.5 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-full hidden sm:block">
+                                Read-Only Mode
+                            </span>
+                            <Button size="sm" className="gap-2 bg-secondary hover:bg-secondary/80 text-foreground" onClick={() => navigate('/admin')}>
+                                <LayoutDashboard className="h-4 w-4" />
+                                Back to Dashboard
+                            </Button>
+                        </div>
+                    ) : (
+                        <>
+                            <Button variant="outline" size="sm" className="gap-2 hidden md:flex">
+                                <Download className="h-4 w-4" />
+                                Save
+                            </Button>
+                            <Button size="sm" className="gap-2" onClick={handleAddToCart} disabled={isSaving}>
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        Add to Cart
+                                        <ShoppingCart className="h-4 w-4" />
+                                    </>
+                                )}
+                            </Button>
+                        </>
+                    )}
                 </div>
             </header>
 
@@ -356,7 +391,7 @@ const CustomizerPage = () => {
 
                 {/* Viewer Area */}
                 <div className="flex-1 relative bg-secondary/5">
-                    {selectedProduct.type === '3d' ? (
+                    {(selectedProduct.type === '3d' || !!selectedProduct.modelPath) ? (
                         <ProductViewer3D
                             ref={viewerRef}
                             product={selectedProduct}
@@ -368,6 +403,7 @@ const CustomizerPage = () => {
                             onAddDecal={handleAddDecal3D}
                             onUpdateDecal={handleUpdateDecal3D}
                             onPlaceSticker={() => setActiveSticker(null)}
+                            readOnly={isReadOnly}
                         />
                     ) : (
                         <ProductViewer2D
@@ -377,13 +413,15 @@ const CustomizerPage = () => {
                             setStickers={setCurrentStickers}
                             selectedId={selectedId}
                             setSelectedId={setSelectedId}
+                            readOnly={isReadOnly}
                         />
                     )}
                 </div>
 
                 {/* Customizer Panel */}
-                <div className="w-full md:w-[450px] border-t md:border-t-0 md:border-l border-border bg-card overflow-y-auto flex flex-col">
-                    <nav className="flex items-center border-b border-border bg-muted/30">
+                {!isReadOnly && (
+                    <div className="w-full md:w-[450px] border-t md:border-t-0 md:border-l border-border bg-card overflow-y-auto flex flex-col">
+                        <nav className="flex items-center border-b border-border bg-muted/30">
                         <button
                             onClick={() => setActiveTab('stickers')}
                             className={`flex-1 py-4 text-sm font-medium transition-colors flex flex-col items-center gap-1 ${activeTab === 'stickers' ? 'text-primary bg-background border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
@@ -639,6 +677,7 @@ const CustomizerPage = () => {
                         )}
                     </div>
                 </div>
+                )}
             </main>
         </div>
     )

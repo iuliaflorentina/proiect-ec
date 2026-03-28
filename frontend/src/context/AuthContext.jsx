@@ -32,10 +32,24 @@ async function saveUserToDb(user) {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        try {
+          const idTokenResult = await u.getIdTokenResult()
+          const adminCheck = !!idTokenResult.claims.admin
+          u.isAdmin = adminCheck
+          setIsAdmin(adminCheck)
+        } catch (e) {
+          console.error("Error fetching token claims:", e)
+          setIsAdmin(false)
+        }
+      } else {
+        setIsAdmin(false)
+      }
       setUser(u)
       setLoading(false)
     })
@@ -60,7 +74,7 @@ export function AuthProvider({ children }) {
   const getToken = () => user?.getIdToken()
 
   return (
-    <AuthContext.Provider value={{ user, loading, signup, login, logout, getToken }}>
+    <AuthContext.Provider value={{ user, isAdmin, loading, signup, login, logout, getToken }}>
       {!loading && children}
     </AuthContext.Provider>
   )

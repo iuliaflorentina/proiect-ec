@@ -1,10 +1,11 @@
 import { useRef, useState, useEffect, useMemo, Suspense, forwardRef, useImperativeHandle } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
-import { OrbitControls, ContactShadows, Environment, useGLTF, Bvh } from '@react-three/drei'
+import { OrbitControls, ContactShadows, Environment, useGLTF, Bvh, Html } from '@react-three/drei'
+import { Loader2 } from 'lucide-react'
 import * as THREE from 'three'
 import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js'
 
-function Model({ product, currentColor, decals, activeSticker, selectedId, setSelectedId, onAddDecal, onUpdateDecal, onPlaceSticker, onDraggingChange, sceneRef }) {
+function Model({ product, currentColor, decals, activeSticker, selectedId, setSelectedId, onAddDecal, onUpdateDecal, onPlaceSticker, onDraggingChange, sceneRef, readOnly }) {
     const defaultModel = '/models/nike_air_jordan.glb'
     let modelPath = product?.modelPath || defaultModel
     if (modelPath === '/models/oversized_tshirt.glb') {
@@ -207,6 +208,8 @@ function Model({ product, currentColor, decals, activeSticker, selectedId, setSe
 
     // Cursor handling
     useEffect(() => {
+        if (readOnly) return
+
         let cursor = 'auto'
         if (isDragging) {
             cursor = 'grabbing'
@@ -222,30 +225,51 @@ function Model({ product, currentColor, decals, activeSticker, selectedId, setSe
         return () => { document.body.style.cursor = 'auto' }
     }, [isDragging, hoveredDecal, hoveredMesh, activeSticker])
 
+    const getPointerEvents = () => {
+        if (readOnly) return {}
+        return {
+            onPointerDown: handlePointerDown,
+            onPointerOver: (e) => { e.stopPropagation(); setHoveredMesh(e.object.name); },
+            onPointerOut: (e) => { e.stopPropagation(); setHoveredMesh(null); }
+        }
+    }
+
+    const getGroupPointerEvents = () => {
+        if (readOnly) return {}
+        return {
+            onPointerMove: handlePointerMove,
+            onPointerUp: handlePointerUp,
+            onPointerLeave: handlePointerUp
+        }
+    }
+
+    const getDecalPointerEvents = () => {
+        if (readOnly) return {}
+        return {
+            onPointerDown: handlePointerDown,
+            onPointerOver: (e) => { e.stopPropagation(); if (e.object.userData.isDecal) setHoveredDecal(e.object.userData.decalId); },
+            onPointerOut: (e) => { e.stopPropagation(); setHoveredDecal(null); }
+        }
+    }
+
     return (
         <group 
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
+            {...getGroupPointerEvents()}
             ref={sceneRef}
         >
             <primitive
                 object={clonedScene}
-                onPointerDown={handlePointerDown}
-                onPointerOver={(e) => { e.stopPropagation(); setHoveredMesh(e.object.name); }}
-                onPointerOut={(e) => { e.stopPropagation(); setHoveredMesh(null); }}
+                {...getPointerEvents()}
             />
             <group
                 ref={decalsGroupRef}
-                onPointerDown={handlePointerDown}
-                onPointerOver={(e) => { e.stopPropagation(); if(e.object.userData.isDecal) setHoveredDecal(e.object.userData.decalId); }}
-                onPointerOut={(e) => { e.stopPropagation(); setHoveredDecal(null); }}
+                {...getDecalPointerEvents()}
             />
         </group>
     )
 }
 
-const ProductViewer3D = forwardRef(({ product, currentColor, decals, activeSticker, selectedId, setSelectedId, onAddDecal, onUpdateDecal, onPlaceSticker }, ref) => {
+const ProductViewer3D = forwardRef(({ product, currentColor, decals, activeSticker, selectedId, setSelectedId, onAddDecal, onUpdateDecal, onPlaceSticker, readOnly }, ref) => {
     const [isDragging, setIsDragging] = useState(false)
     const sceneRef = useRef()
 
@@ -255,12 +279,19 @@ const ProductViewer3D = forwardRef(({ product, currentColor, decals, activeStick
 
     return (
         <div className="w-full h-full min-h-[500px] relative bg-[#0a0a0a]">
-            <Canvas camera={{ position: [0, 1.5, 4], fov: 50 }} preserveDrawingBuffer={true}>
+            <Canvas camera={{ position: [0, 1.5, 4], fov: 50 }} gl={{ preserveDrawingBuffer: true }}>
                 <ambientLight intensity={0.5} />
                 <directionalLight position={[5, 8, 5]} intensity={1} castShadow />
                 <directionalLight position={[-5, 5, -5]} intensity={0.5} />
 
-                <Suspense fallback={null}>
+                <Suspense fallback={(
+                    <Html center>
+                        <div className="flex flex-col items-center justify-center gap-4 text-muted-foreground whitespace-nowrap">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            <p className="text-xs font-semibold uppercase tracking-widest bg-background/50 px-2 py-1 rounded">Loading 3D Workspace...</p>
+                        </div>
+                    </Html>
+                )}>
                     <Bvh firstHitOnly>
                         <Model
                             product={product}
@@ -274,6 +305,7 @@ const ProductViewer3D = forwardRef(({ product, currentColor, decals, activeStick
                             onPlaceSticker={onPlaceSticker}
                             onDraggingChange={setIsDragging}
                             sceneRef={sceneRef}
+                            readOnly={readOnly}
                         />
                     </Bvh>
                     <ContactShadows position={[0, -1.05, 0]} opacity={0.6} scale={10} blur={2} far={4} />
@@ -282,10 +314,12 @@ const ProductViewer3D = forwardRef(({ product, currentColor, decals, activeStick
 
                 <OrbitControls makeDefault enabled={!isDragging} minDistance={2} maxDistance={10} maxPolarAngle={Math.PI / 2 + 0.1} />
             </Canvas>
-            <div className="absolute bottom-4 left-4 text-xs font-semibold text-muted-foreground uppercase tracking-widest bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-sm text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                Click to Select · Drag Element to Move · Scroll to Zoom
-            </div>
+            {!readOnly && (
+                <div className="absolute bottom-4 left-4 text-xs font-semibold text-muted-foreground uppercase tracking-widest bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-sm text-white flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    Click to Select · Drag Element to Move · Scroll to Zoom
+                </div>
+            )}
         </div>
     )
 })

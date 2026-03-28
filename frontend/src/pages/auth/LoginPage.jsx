@@ -10,12 +10,18 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-  const { login, user } = useAuth()
+  const { login, user, isAdmin } = useAuth()
 
-  // Already logged in → go to profile
+  // Redirect based on role after login
   useEffect(() => {
-    if (user) navigate('/profile', { replace: true })
-  }, [user, navigate])
+    if (user) {
+      if (isAdmin) {
+        navigate('/admin', { replace: true })
+      } else {
+        navigate('/profile', { replace: true })
+      }
+    }
+  }, [user, isAdmin, navigate])
 
 
   const handleChange = (e) =>

@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, User, Calendar, DollarSign, Sparkles, Download } from 'lucide-react'
+import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
+import { GalleryItemModal } from '@/components/admin/GalleryItemModal'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -9,8 +11,139 @@ export default function AdminPage() {
   const { user, getToken } = useAuth()
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
+  const [gallery, setGallery] = useState([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('orders')
   const [error, setError] = useState('')
+  const [isSeeding, setIsSeeding] = useState(false)
+  const [isSeedingGallery, setIsSeedingGallery] = useState(false)
+  const [selectedGalleryItem, setSelectedGalleryItem] = useState(null)
+  const [isGalleryModalOpen, setIsGalleryModalOpen] = useState(false)
+
+  const seedGallery = async () => {
+    setIsSeedingGallery(true)
+    setError('')
+    const galleryItems = [
+      {
+        title: 'Solar Flare Kicks',
+        image: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?w=800&q=80',
+        category: 'sneakers',
+        featured: true
+      },
+      {
+        title: 'Midnight Bloom Hoodie',
+        image: 'https://images.unsplash.com/photo-1556821840-3a63f15732ce?w=800&q=80',
+        category: 'hoodies',
+        featured: true
+      },
+      {
+        title: 'Abstract Wave Tee',
+        image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=800&q=80',
+        category: 'tees',
+        featured: true
+      },
+      {
+        title: 'Urban Jungle Jacket',
+        image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&q=80',
+        category: 'jackets',
+        featured: true
+      },
+      {
+        title: 'Neon Dreams Sneakers',
+        image: 'https://images.unsplash.com/photo-1600269452121-4f2416e55c28?w=800&q=80',
+        category: 'sneakers',
+        featured: true
+      },
+      {
+        title: 'Cherry Blossom Hoodie',
+        image: 'https://images.unsplash.com/photo-1578768079052-aa76e52ff62e?w=800&q=80',
+        category: 'hoodies',
+        featured: true
+      }
+    ]
+
+    try {
+      const token = await getToken()
+      for (const item of galleryItems) {
+        await fetch(`${API}/api/gallery`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(item)
+        })
+      }
+      alert('Gallery seeded successfully!')
+      fetchGallery()
+    } catch (err) {
+      setError('Failed to seed gallery: ' + err.message)
+    } finally {
+      setIsSeedingGallery(false)
+    }
+  }
+
+  const seedBaseModels = async () => {
+    setIsSeeding(true)
+    setError('')
+    
+    const baseModels = [
+      {
+        name: 'Air Jordan 1',
+        type: '3d',
+        description: 'Iconic basketball sneaker ready for your custom 3D design mapping and colorways.',
+        image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=800&q=80',
+        category: 'sneakers',
+        price: 150,
+        customizable: true,
+        rating: 4.9,
+        reviews: 128
+      },
+      {
+        name: 'Custom T-Shirt',
+        type: '3d',
+        description: 'Premium cotton t-shirt ready for your custom 3D design mapping and colorways.',
+        modelPath: '/models/tshirt_new.glb',
+        image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=800&q=80',
+        category: 'tees',
+        price: 35,
+        customizable: true,
+        rating: 4.7,
+        reviews: 95
+      },
+      {
+        name: 'Denim Jacket',
+        type: '3d',
+        description: 'Vintage wash denim jacket for true expression.',
+        modelPath: '/models/jacket_002.glb',
+        image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&q=80',
+        category: 'jackets',
+        price: 85,
+        customizable: true,
+        rating: 4.8,
+        reviews: 32
+      }
+    ]
+
+    try {
+      const token = await getToken()
+      for (const model of baseModels) {
+        await fetch(`${API}/api/products`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(model)
+        })
+      }
+      alert('Base models restored! Check the Shop page.')
+    } catch (err) {
+      setError('Failed to seed models: ' + err.message)
+    } finally {
+      setIsSeeding(false)
+    }
+  }
 
   useEffect(() => {
     if (!user) {
@@ -18,20 +151,25 @@ export default function AdminPage() {
       return
     }
 
-    const fetchOrders = async () => {
+    const fetchAdminData = async () => {
       try {
         const token = await getToken()
-        const res = await fetch(`${API}/api/admin/orders`, {
+        
+        // Fetch Orders
+        const ordersRes = await fetch(`${API}/api/admin/orders`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-        if (res.status === 403) {
+        if (ordersRes.status === 403) {
           setError('Access denied. Admin privileges required.')
           setLoading(false)
           return
         }
-        if (!res.ok) throw new Error(await res.text())
-        const data = await res.json()
-        setOrders(data)
+        if (!ordersRes.ok) throw new Error('Failed to fetch orders')
+        const ordersData = await ordersRes.json()
+        setOrders(ordersData)
+
+        // Fetch Gallery
+        await fetchGallery()
       } catch (err) {
         setError(err.message)
       } finally {
@@ -39,8 +177,51 @@ export default function AdminPage() {
       }
     }
 
-    fetchOrders()
+    fetchAdminData()
   }, [user, navigate, getToken])
+
+  const fetchGallery = async () => {
+    try {
+      const res = await fetch(`${API}/api/gallery`)
+      if (res.ok) {
+        const data = await res.json()
+        setGallery(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch gallery:', err)
+    }
+  }
+
+  const handleDeleteGalleryItem = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this artwork?')) return
+    
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API}/api/gallery/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setGallery(prev => prev.filter(item => item.id !== id))
+      } else {
+        throw new Error('Failed to delete item')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const mostOrderedProduct = useMemo(() => {
+    if (!orders || orders.length === 0) return 'None'
+    const counts = {}
+    orders.forEach(order => {
+      (order.items || []).forEach(item => {
+        counts[item.name] = (counts[item.name] || 0) + item.quantity
+      })
+    })
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
+    return sorted[0] ? sorted[0][0] : 'None'
+  }, [orders])
 
   if (loading) {
     return (
@@ -62,13 +243,48 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Admin Dashboard</h1>
-        <p className="mt-1 text-muted-foreground">All orders placed on the platform</p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Admin Dashboard</h1>
+          <p className="mt-1 text-muted-foreground">All orders placed on the platform</p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={seedGallery} 
+            disabled={isSeedingGallery}
+            className="gap-2"
+          >
+            {isSeedingGallery ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+            Restore Base Gallery
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={seedBaseModels} 
+            disabled={isSeeding}
+            className="gap-2"
+          >
+            {isSeeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+            Restore Base Models
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-border bg-card p-6">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <Sparkles className="h-5 w-5 text-primary" />
+            </span>
+            <div className="overflow-hidden">
+              <p className="text-xl font-bold text-foreground truncate">{mostOrderedProduct}</p>
+              <p className="text-sm text-muted-foreground">Top Product</p>
+            </div>
+          </div>
+        </div>
         <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -108,96 +324,213 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Orders Table */}
-      {orders.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-12 text-center">
-          <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">No orders yet.</p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="px-6 py-4 text-left font-semibold text-foreground">Order ID</th>
-                  <th className="px-6 py-4 text-left font-semibold text-foreground">Customer</th>
-                  <th className="px-6 py-4 text-left font-semibold text-foreground">Items</th>
-                  <th className="px-6 py-4 text-left font-semibold text-foreground">Total</th>
-                  <th className="px-6 py-4 text-left font-semibold text-foreground">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
-                      {order.id.slice(0, 8)}...
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-foreground">
-                        {order.shipping?.firstName} {order.shipping?.lastName}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{order.userEmail}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-2">
-                        {(order.items || []).map((item, i) => (
-                          <div key={i} className="flex flex-col gap-1 border-b border-border/30 last:border-0 pb-2 mb-2 last:pb-0 last:mb-0">
-                            <div className="flex items-center justify-between gap-4 text-xs">
-                              <span className="font-medium text-foreground">{item.name} ×{item.quantity}</span>
-                              <div className="flex items-center gap-2">
-                                {item.customization && (
-                                  <Link
-                                    to="/customize"
-                                    state={{
-                                      productId: item.productId,
-                                      customization: item.customization
-                                    }}
-                                    className="flex items-center gap-1 font-bold text-primary hover:underline hover:text-primary/80 transition-colors"
-                                  >
-                                    <Sparkles className="h-3 w-3" />
-                                    Design
-                                  </Link>
-                                )}
-                                {item.modelUrl && (
-                                  <a 
-                                    href={item.modelUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-1 font-bold text-muted-foreground hover:text-foreground transition-colors"
-                                  >
-                                    <Download className="h-3 w-3" />
-                                    GLB
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                            {item.designId && (
-                              <div className="text-[10px] text-muted-foreground/60 font-mono">
-                                ID: {item.designId}
-                              </div>
-                            )}
+      {/* Tabs Navigation */}
+      <div className="mb-6 flex border-b border-border">
+        <button
+          onClick={() => setActiveTab('orders')}
+          className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'orders' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Orders Management
+        </button>
+        <button
+          onClick={() => setActiveTab('gallery')}
+          className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'gallery' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Gallery Management
+        </button>
+      </div>
+
+      {activeTab === 'orders' ? (
+        <>
+          {orders.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
+              <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No orders yet.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40">
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Order ID</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Customer</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Items</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Total</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {orders.map((order) => (
+                      <tr key={order.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
+                          {order.id.slice(0, 8)}...
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-foreground">
+                            {order.shipping?.firstName} {order.shipping?.lastName}
                           </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-foreground">
-                      ${parseFloat(order.total || 0).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 text-muted-foreground">
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="h-3.5 w-3.5" />
-                        {order.createdAt
-                          ? new Date(order.createdAt._seconds * 1000).toLocaleDateString()
-                          : '—'}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                          <div className="text-xs text-muted-foreground">{order.userEmail}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-2">
+                            {(order.items || []).map((item, i) => (
+                              <div key={i} className="flex flex-col gap-1 border-b border-border/30 last:border-0 pb-2 mb-2 last:pb-0 last:mb-0">
+                                <div className="flex items-center justify-between gap-4 text-xs">
+                                  <span className="font-medium text-foreground">{item.name} ×{item.quantity}</span>
+                                  <div className="flex items-center gap-2">
+                                    {item.customization && (
+                                      <Link
+                                        to="/customize"
+                                        state={{
+                                          productId: item.productId,
+                                          productPayload: { 
+                                            ...item, 
+                                            type: (item.type || (item.customization?.decals3D?.length > 0 ? '3d' : '2d'))
+                                          },
+                                          customization: item.customization,
+                                          readOnly: true
+                                        }}
+                                        className="flex items-center gap-1 font-bold text-primary hover:underline hover:text-primary/80 transition-colors"
+                                      >
+                                        <Sparkles className="h-3 w-3" />
+                                        Design
+                                      </Link>
+                                    )}
+                                    {item.modelUrl && (
+                                      <a 
+                                        href={item.modelUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1 font-bold text-muted-foreground hover:text-foreground transition-colors"
+                                      >
+                                        <Download className="h-3 w-3" />
+                                        GLB
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                                {item.designId && (
+                                  <div className="text-[10px] text-muted-foreground/60 font-mono">
+                                    ID: {item.designId}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-foreground">
+                          ${parseFloat(order.total || 0).toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5" />
+                            {order.createdAt
+                              ? new Date(order.createdAt._seconds * 1000).toLocaleDateString()
+                              : '—'}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-foreground">Artworks in Gallery ({gallery.length})</h2>
+            <Button 
+                onClick={() => { setSelectedGalleryItem(null); setIsGalleryModalOpen(true); }}
+                className="gap-2"
+            >
+                <Plus className="h-4 w-4" />
+                Add Artwork
+            </Button>
           </div>
-        </div>
+
+          {gallery.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
+              <Palette className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-20" />
+              <p className="text-muted-foreground">The gallery is currently empty.</p>
+              <Button variant="link" onClick={seedGallery} className="mt-2 text-primary">Seed initial artworks</Button>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40">
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Artwork</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Category</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Featured</th>
+                      <th className="px-6 py-4 text-right font-semibold text-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {gallery.map((item) => (
+                      <tr key={item.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-4">
+                            <img src={item.image} alt={item.title} className="h-12 w-12 rounded-lg object-cover border border-border" />
+                            <div className="font-bold text-foreground">{item.title}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="capitalize px-2 py-1 rounded-full bg-secondary/30 text-[10px] font-bold border border-border">
+                            {item.category}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {item.featured ? (
+                            <span className="flex items-center gap-1 text-primary font-bold text-xs uppercase tracking-widest">
+                              <Sparkles className="h-3 w-3" />
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs uppercase tracking-widest">No</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => { setSelectedGalleryItem(item); setIsGalleryModalOpen(true); }}
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-secondary/20"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleDeleteGalleryItem(item.id)}
+                                className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Gallery Modal */}
+      {isGalleryModalOpen && (
+        <GalleryItemModal
+          isOpen={isGalleryModalOpen}
+          onClose={() => setIsGalleryModalOpen(false)}
+          item={selectedGalleryItem}
+          onSaveSuccess={fetchGallery}
+        />
       )}
     </div>
   )

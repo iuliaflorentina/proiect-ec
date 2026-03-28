@@ -11,7 +11,7 @@ export function Navbar() {
     const location = useLocation()
     const navigate = useNavigate()
     const { items } = useCart()
-    const { user, logout } = useAuth()
+    const { user, isAdmin, logout } = useAuth()
     const cartCount = items.reduce((sum, item) => sum + item.quantity, 0)
 
     const handleSearch = (e) => {
@@ -68,7 +68,7 @@ export function Navbar() {
 
                 {/* Desktop Nav */}
                 <nav className="hidden items-center gap-6 lg:flex">
-                    {navLinks.map((link) => (
+                    {!isAdmin && navLinks.map((link) => (
                         <Link
                             key={link.href}
                             to={link.href}
@@ -80,6 +80,11 @@ export function Navbar() {
                             {link.label}
                         </Link>
                     ))}
+                    {isAdmin && (
+                        <Link to="/products" className={`text-sm font-medium transition-colors hover:text-primary ${isActive('/products') ? 'text-primary' : 'text-muted-foreground'}`}>
+                            Manage Products
+                        </Link>
+                    )}
                 </nav>
 
                 {/* Actions */}
@@ -91,13 +96,13 @@ export function Navbar() {
                     {user ? (
                         /* Logged-in: avatar + dropdown-less quick actions */
                         <div className="hidden items-center gap-1 sm:flex">
-                            <Link to="/profile">
+                            <Link to={isAdmin ? "/admin" : "/profile"}>
                                 <Button
-                                    variant={isActive('/profile') ? 'secondary' : 'ghost'}
+                                    variant={isActive(isAdmin ? '/admin' : '/profile') ? 'secondary' : 'ghost'}
                                     size="icon"
-                                    title={user.displayName || user.email}
+                                    title={isAdmin ? "Admin Dashboard" : (user.displayName || user.email)}
                                 >
-                                    <User className="h-4 w-4" />
+                                    {isAdmin ? <LayoutDashboard className="h-4 w-4" /> : <User className="h-4 w-4" />}
                                 </Button>
                             </Link>
                             <Button variant="ghost" size="icon" onClick={handleLogout} title="Sign out">
@@ -112,16 +117,18 @@ export function Navbar() {
                         </Link>
                     )}
 
-                    <Link to="/cart">
-                        <Button variant="ghost" size="icon" className="relative">
-                            <ShoppingCart className="h-4 w-4" />
-                            {cartCount > 0 && (
-                                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                                    {cartCount}
-                                </span>
-                            )}
-                        </Button>
-                    </Link>
+                    {!isAdmin && (
+                        <Link to="/cart">
+                            <Button variant="ghost" size="icon" className="relative">
+                                <ShoppingCart className="h-4 w-4" />
+                                {cartCount > 0 && (
+                                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                                        {cartCount}
+                                    </span>
+                                )}
+                            </Button>
+                        </Link>
+                    )}
                     <Button
                         variant="ghost"
                         size="icon"
@@ -137,7 +144,7 @@ export function Navbar() {
             {isOpen && (
                 <div className="border-t border-border bg-background md:hidden">
                     <nav className="flex flex-col gap-1 px-4 py-4">
-                        {navLinks.map((link) => (
+                        {!isAdmin && navLinks.map((link) => (
                             <Link
                                 key={link.href}
                                 to={link.href}
@@ -150,14 +157,23 @@ export function Navbar() {
                                 {link.label}
                             </Link>
                         ))}
+                        {isAdmin && (
+                            <Link
+                                to="/products"
+                                onClick={() => setIsOpen(false)}
+                                className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-secondary ${isActive('/products') ? 'bg-secondary text-foreground' : 'text-muted-foreground'}`}
+                            >
+                                Manage Products
+                            </Link>
+                        )}
                         {user ? (
                             <>
                                 <Link
-                                    to="/profile"
+                                    to={isAdmin ? "/admin" : "/profile"}
                                     onClick={() => setIsOpen(false)}
                                     className="mt-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary"
                                 >
-                                    My Profile
+                                    {isAdmin ? "Admin Dashboard" : "My Profile"}
                                 </Link>
                                 <button
                                     onClick={handleLogout}

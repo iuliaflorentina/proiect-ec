@@ -1,8 +1,14 @@
-import { Link } from 'react-router-dom'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, Sparkles, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/context/AuthContext'
+import { ProductModal } from '@/components/admin/ProductModal'
 
 export function HeroSection() {
+    const { isAdmin } = useAuth()
+    const navigate = useNavigate()
+    const [isModalOpen, setIsModalOpen] = useState(false)
     return (
         <section className="relative flex min-h-[85vh] items-center overflow-hidden">
             {/* Background image */}
@@ -39,25 +45,44 @@ export function HeroSection() {
                     </p>
 
                     <div className="mt-8 flex flex-wrap gap-4">
-                        <Link to="/products">
+                        {isAdmin ? (
                             <Button
                                 size="lg"
                                 className="bg-primary text-primary-foreground hover:bg-primary/90"
+                                onClick={() => setIsModalOpen(true)}
                             >
-                                Shop Collection
-                                <ArrowRight className="ml-2 h-4 w-4" />
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add New Product
                             </Button>
-                        </Link>
-                        <Link to="/products?customizable=true">
-                            <Button
-                                size="lg"
-                                variant="outline"
-                                className="border-border text-foreground hover:bg-secondary"
-                            >
-                                Start Customizing
-                            </Button>
-                        </Link>
+                        ) : (
+                            <>
+                                <Link to="/products">
+                                    <Button
+                                        size="lg"
+                                        className="bg-primary text-primary-foreground hover:bg-primary/90"
+                                    >
+                                        Shop Collection
+                                        <ArrowRight className="ml-2 h-4 w-4" />
+                                    </Button>
+                                </Link>
+                                <Link to="/products?customizable=true">
+                                    <Button
+                                        size="lg"
+                                        variant="outline"
+                                        className="border-border text-foreground hover:bg-secondary"
+                                    >
+                                        Start Customizing
+                                    </Button>
+                                </Link>
+                            </>
+                        )}
                     </div>
+
+                    <ProductModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+                        onSaveSuccess={() => navigate('/products')}
+                    />
 
                     {/* Social proof */}
                     <div className="mt-10 flex items-center gap-6">

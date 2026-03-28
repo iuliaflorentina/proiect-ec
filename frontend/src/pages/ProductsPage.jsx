@@ -1,14 +1,22 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Star, ShoppingCart, SlidersHorizontal, X, Search } from 'lucide-react'
+import { Star, ShoppingCart, SlidersHorizontal, X, Search, Edit2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { products } from '@/lib/data'
 import { useCart } from '@/context/CartContext'
+import { useAuth } from '@/context/AuthContext'
+import { ProductModal } from '@/components/admin/ProductModal'
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 const CATEGORIES = ['All', 'sneakers', 'hoodies', 'jackets', 'tees']
 
 export default function ProductsPage() {
+    const { isAdmin } = useAuth()
+    const [products, setProducts] = useState([])
+    const [isLoading, setIsLoading] = useState(true)
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [editingProduct, setEditingProduct] = useState(null)
+    
     const [activeCategory, setActiveCategory] = useState('All')
     const [customizableOnly, setCustomizableOnly] = useState(false)
     const [searchParams, setSearchParams] = useSearchParams()
@@ -16,6 +24,25 @@ export default function ProductsPage() {
     const [added, setAdded] = useState({})
 
     const searchQuery = searchParams.get('search') || ''
+
+    const fetchProducts = async () => {
+        try {
+            setIsLoading(true)
+            const res = await fetch(`${API}/api/products`)
+            if (res.ok) {
+                const data = await res.json()
+                setProducts(data)
+            }
+        } catch (error) {
+            console.error('Error fetching products:', error)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        fetchProducts()
+    }, [])
 
     const filtered = useMemo(() => {
         return products.filter((p) => {
@@ -28,9 +55,10 @@ export default function ProductsPage() {
                 const matchesArtist = p.artist?.toLowerCase().includes(query)
                 if (!matchesName && !matchesCategory && !matchesArtist) return false
             }
+            if (!isAdmin && p.type === '3d') return false
             return true
         })
-    }, [activeCategory, customizableOnly, searchQuery])
+    }, [products, activeCategory, customizableOnly, searchQuery, isAdmin])
 
     const handleAdd = (product) => {
         addItem(product)
@@ -151,27 +179,68 @@ export default function ProductsPage() {
                                     )}
                                 </div>
                                 <div className="flex gap-2">
-                                    {product.customizable && (
-                                        <Link to="/customize">
-                                            <Button variant="outline" size="sm" className="h-9 px-3 text-xs">
-                                                Customize
+                                    {isAdmin ? (
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                className="h-9 px-3 text-xs font-semibold"
+                                                onClick={() => {
+                                                    setEditingProduct(product)
+                                                    setIsModalOpen(true)
+                                                }}
+                                            >
+                                                <Edit2 className="h-3.5 w-3.5" />
+                                                Edit
                                             </Button>
-                                        </Link>
+                                            <Link to="/customize" state={{ productId: product.id, productPayload: product, readOnly: true }}>
+                                                <Button className="h-9 px-3 text-xs font-semibold">
+                                                    View
+                                                </Button>
+                                            </Link>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {product.customizable && (
+                                                <Link to="/customize" state={{ productId: product.id, productPayload: product }}>
+                                                    <Button variant="outline" size="sm" className="h-9 px-3 text-xs">
+                                                        Customize
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                            <Button
+                                                size="icon"
+                                                onClick={() => handleAdd(product)}
+                                                className={`h-9 w-9 transition-all ${added[product.id] ? 'bg-green-600 hover:bg-green-600' : ''
+                                                    }`}
+                                            >
+                                                {added[product.id] ? '✓' : <ShoppingCart className="h-4 w-4" />}
+                                            </Button>
+                                        </>
                                     )}
-                                    <Button
-                                        size="icon"
-                                        onClick={() => handleAdd(product)}
-                                        className={`h-9 w-9 transition-all ${added[product.id] ? 'bg-green-600 hover:bg-green-600' : ''
-                                            }`}
-                                    >
-                                        {added[product.id] ? '✓' : <ShoppingCart className="h-4 w-4" />}
-                                    </Button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 ))}
+
+                {isLoading && (
+                    <div className="col-span-full py-10 text-center text-muted-foreground flex items-center justify-center min-h-[50vh]">
+                        Loading catalog...
+                    </div>
+                )}
             </div>
+
+            {isAdmin && (
+                <ProductModal 
+                    isOpen={isModalOpen} 
+                    onClose={() => setIsModalOpen(false)} 
+                    product={editingProduct} 
+                    onSaveSuccess={() => {
+                        setIsModalOpen(false)
+                        fetchProducts()
+                    }}
+                />
+            )}
         </div>
     )
 }

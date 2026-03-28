@@ -1,9 +1,39 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight } from 'lucide-react'
-import { galleryItems } from '@/lib/data'
+import { ArrowRight, Loader2 } from 'lucide-react'
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 export function FeaturedGallery() {
-    const featured = galleryItems.filter((item) => item.featured).slice(0, 6)
+    const [items, setItems] = useState([])
+    const [isLoading, setIsLoading] = useState(true)
+
+    useEffect(() => {
+        const fetchGallery = async () => {
+            try {
+                const res = await fetch(`${API}/api/gallery`)
+                if (res.ok) {
+                    const data = await res.json()
+                    setItems(data)
+                }
+            } catch (err) {
+                console.error('Gallery fetch failed:', err)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        fetchGallery()
+    }, [])
+
+    const featured = items.filter((item) => item.featured).slice(0, 6)
+
+    if (isLoading) return (
+        <div className="flex justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    )
+
+    if (items.length === 0) return null
 
     return (
         <section className="mx-auto max-w-7xl px-4 py-20 lg:px-8">
@@ -13,7 +43,7 @@ export function FeaturedGallery() {
                         Featured Artworks
                     </h2>
                     <p className="mt-2 text-muted-foreground">
-                        Hand-painted masterpieces from our community of artists
+                        Hand-painted masterpieces and unique custom designs
                     </p>
                 </div>
                 <Link
@@ -40,9 +70,8 @@ export function FeaturedGallery() {
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                         {/* Hover overlay */}
-                        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-background/90 via-transparent to-transparent p-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-background/90 via-transparent to-transparent p-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100 text-center">
                             <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                            <p className="text-xs text-muted-foreground">by {item.artist}</p>
                         </div>
                     </Link>
                 ))}

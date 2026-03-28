@@ -1,8 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { CartProvider } from '@/context/CartContext'
 import { AuthProvider } from '@/context/AuthContext'
-import { Navbar } from '@/components/layout/Navbar'
-import { Footer } from '@/components/layout/Footer'
+import { Layout } from '@/components/layout/Layout'
 import HomePage from '@/pages/HomePage'
 import ProductsPage from '@/pages/ProductsPage'
 import CartPage from '@/pages/CartPage'
@@ -20,25 +19,21 @@ export default function App() {
         <BrowserRouter>
             <AuthProvider>
                 <CartProvider>
-                    <div className="flex min-h-screen flex-col bg-background">
-                        <Navbar />
-                        <main className="flex-1">
-                            <Routes>
-                                <Route path="/" element={<HomePage />} />
-                                <Route path="/products" element={<ProductsPage />} />
-                                <Route path="/cart" element={<CartPage />} />
-                                <Route path="/checkout" element={<CheckoutPage />} />
-                                <Route path="/gallery" element={<GalleryPage />} />
-                                <Route path="/reviews" element={<ReviewsPage />} />
-                                <Route path="/auth/login" element={<LoginPage />} />
-                                <Route path="/auth/signup" element={<SignupPage />} />
-                                <Route path="/customize" element={<CustomizerPage />} />
-                                <Route path="/admin" element={<AdminPage />} />
-                                <Route path="/profile" element={<ProfilePage />} />
-                            </Routes>
-                        </main>
-                        <Footer />
-                    </div>
+                    <Routes>
+                        <Route element={<Layout />}>
+                            <Route path="/" element={<HomePage />} />
+                            <Route path="/products" element={<ProductsPage />} />
+                            <Route path="/cart" element={<CartPage />} />
+                            <Route path="/checkout" element={<CheckoutPage />} />
+                            <Route path="/gallery" element={<GalleryPage />} />
+                            <Route path="/reviews" element={<ReviewsPage />} />
+                            <Route path="/auth/login" element={<LoginPage />} />
+                            <Route path="/auth/signup" element={<SignupPage />} />
+                            <Route path="/customize" element={<CustomizerPage />} />
+                            <Route path="/admin" element={<AdminPage />} />
+                            <Route path="/profile" element={<ProfilePage />} />
+                        </Route>
+                    </Routes>
                 </CartProvider>
             </AuthProvider>
         </BrowserRouter>
