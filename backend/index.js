@@ -2,6 +2,7 @@ const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const axios = require('axios');
 
 dotenv.config();
 
@@ -37,24 +38,20 @@ const authenticate = async (req, res, next) => {
 
 // Middleware to check if user is admin
 const isAdmin = async (req, res, next) => {
-  if (req.user && req.user.admin) {
-    next();
-  } else {
-    // For now, let's assume a specific email is admin or use custom claims
-    // To set an admin: admin.auth().setCustomUserClaims(uid, { admin: true });
-    // For this project, we'll check if the email matches a specific one or if they have the claim
+  try {
     const user = await admin.auth().getUser(req.user.uid);
     if (user.customClaims && user.customClaims.admin) {
       next();
     } else {
       res.status(403).send('Forbidden: Admin access required');
     }
+  } catch (error) {
+    res.status(403).send('Forbidden');
   }
 };
 
 // API Endpoints
 
-// Create or update user profile in Firestore
 app.post('/api/users', authenticate, async (req, res) => {
   try {
     const { displayName, email, photoURL } = req.body
@@ -82,7 +79,6 @@ app.post('/api/users', authenticate, async (req, res) => {
   }
 })
 
-// Place an order (requires auth)
 app.post('/api/orders', authenticate, async (req, res) => {
   try {
     const orderData = {
@@ -99,15 +95,20 @@ app.post('/api/orders', authenticate, async (req, res) => {
   }
 });
 
-// Get this user's own orders
 app.get('/api/orders/my', authenticate, async (req, res) => {
   try {
     const snapshot = await db
       .collection('orders')
       .where('userId', '==', req.user.uid)
-      .orderBy('createdAt', 'desc')
       .get()
+    
     const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    orders.sort((a, b) => {
+      const timeA = a.createdAt ? (a.createdAt._seconds || a.createdAt.seconds || 0) : 0;
+      const timeB = b.createdAt ? (b.createdAt._seconds || b.createdAt.seconds || 0) : 0;
+      return timeB - timeA;
+    });
+
     res.status(200).json(orders)
   } catch (error) {
     console.error('Error fetching user orders:', error)
@@ -115,7 +116,6 @@ app.get('/api/orders/my', authenticate, async (req, res) => {
   }
 })
 
-// Get all orders (requires admin)
 app.get('/api/admin/orders', authenticate, isAdmin, async (req, res) => {
   try {
     const snapshot = await db.collection('orders').orderBy('createdAt', 'desc').get()
@@ -127,24 +127,6 @@ app.get('/api/admin/orders', authenticate, isAdmin, async (req, res) => {
   }
 })
 
-
-// Set a user as admin (helper endpoint - should be protected or run once)
-app.post('/api/admin/set-admin', authenticate, async (req, res) => {
-  // Only allow if the requester is already an admin OR if it's the first admin setup
-  // For simplicity during development, we'll let the user set themselves as admin if they provide a secret or if we trust the first one
-  try {
-    await admin.auth().setCustomUserClaims(req.body.uid, { admin: true });
-    res.status(200).send('Admin claims set');
-  } catch (error) {
-    res.status(500).send(error.message);
-  }
-});
-
-// ==============================
-// PRODUCT MANAGEMENT ENDPOINTS
-// ==============================
-
-// Get all products (Public)
 app.get('/api/products', async (req, res) => {
   try {
     const snapshot = await db.collection('products').orderBy('createdAt', 'desc').get();
@@ -156,7 +138,6 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Create a new product (Admin Only)
 app.post('/api/products', authenticate, isAdmin, async (req, res) => {
   try {
     const productData = {
@@ -172,7 +153,6 @@ app.post('/api/products', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Update a product (Admin Only)
 app.put('/api/products/:id', authenticate, isAdmin, async (req, res) => {
   try {
     const productId = req.params.id;
@@ -188,11 +168,6 @@ app.put('/api/products/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// ==============================
-// GALLERY MANAGEMENT ENDPOINTS
-// ==============================
-
-// Get all gallery items (Public)
 app.get('/api/gallery', async (req, res) => {
   try {
     const snapshot = await db.collection('gallery').orderBy('createdAt', 'desc').get();
@@ -204,7 +179,6 @@ app.get('/api/gallery', async (req, res) => {
   }
 });
 
-// Create a new gallery item (Admin Only)
 app.post('/api/gallery', authenticate, isAdmin, async (req, res) => {
   try {
     const artworkData = {
@@ -219,7 +193,6 @@ app.post('/api/gallery', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Update a gallery item (Admin Only)
 app.put('/api/gallery/:id', authenticate, isAdmin, async (req, res) => {
   try {
     const itemId = req.params.id;
@@ -235,7 +208,6 @@ app.put('/api/gallery/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Delete a gallery item (Admin Only)
 app.delete('/api/gallery/:id', authenticate, isAdmin, async (req, res) => {
   try {
     const itemId = req.params.id;
