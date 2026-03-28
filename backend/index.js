@@ -140,6 +140,113 @@ app.post('/api/admin/set-admin', authenticate, async (req, res) => {
   }
 });
 
+// ==============================
+// PRODUCT MANAGEMENT ENDPOINTS
+// ==============================
+
+// Get all products (Public)
+app.get('/api/products', async (req, res) => {
+  try {
+    const snapshot = await db.collection('products').orderBy('createdAt', 'desc').get();
+    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).json(products);
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Create a new product (Admin Only)
+app.post('/api/products', authenticate, isAdmin, async (req, res) => {
+  try {
+    const productData = {
+      ...req.body,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    const docRef = await db.collection('products').add(productData);
+    res.status(201).send({ id: docRef.id });
+  } catch (error) {
+    console.error('Error creating product:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Update a product (Admin Only)
+app.put('/api/products/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const updateData = {
+      ...req.body,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    await db.collection('products').doc(productId).update(updateData);
+    res.status(200).send({ id: productId });
+  } catch (error) {
+    console.error('Error updating product:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// ==============================
+// GALLERY MANAGEMENT ENDPOINTS
+// ==============================
+
+// Get all gallery items (Public)
+app.get('/api/gallery', async (req, res) => {
+  try {
+    const snapshot = await db.collection('gallery').orderBy('createdAt', 'desc').get();
+    const galleryItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).json(galleryItems);
+  } catch (error) {
+    console.error('Error fetching gallery:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Create a new gallery item (Admin Only)
+app.post('/api/gallery', authenticate, isAdmin, async (req, res) => {
+  try {
+    const artworkData = {
+      ...req.body,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    const docRef = await db.collection('gallery').add(artworkData);
+    res.status(201).send({ id: docRef.id });
+  } catch (error) {
+    console.error('Error creating gallery item:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Update a gallery item (Admin Only)
+app.put('/api/gallery/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const itemId = req.params.id;
+    const updateData = {
+      ...req.body,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    await db.collection('gallery').doc(itemId).update(updateData);
+    res.status(200).send({ id: itemId });
+  } catch (error) {
+    console.error('Error updating gallery item:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Delete a gallery item (Admin Only)
+app.delete('/api/gallery/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const itemId = req.params.id;
+    await db.collection('gallery').doc(itemId).delete();
+    res.status(200).send({ id: itemId });
+  } catch (error) {
+    console.error('Error deleting gallery item:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
