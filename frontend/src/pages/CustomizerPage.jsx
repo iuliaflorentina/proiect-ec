@@ -144,111 +144,66 @@ const CustomizerPage = () => {
         setSelectedId(null)
     }
 
-    const handleFileUpload = (e) => {
+    const handleFileUpload = async (e) => {
         const file = e.target.files[0]
         if (!file) return
 
-        const reader = new FileReader()
-        reader.onload = (event) => {
-            const uploadedSrc = event.target.result
+        setIsSaving(true)
+        try {
+            // Upload to Firebase to keep localStorage size tiny and URLs permanent
+            const stickerId = `custom-sticker-${Date.now()}`
+            const stickerRef = ref(storage, `stickers/${stickerId}`)
+            const snapshot = await uploadBytes(stickerRef, file)
+            const uploadedSrc = await getDownloadURL(snapshot.ref)
+
             if (selectedProduct?.type === '3d') {
                 setActiveSticker({ src: uploadedSrc, id: 'uploaded' })
                 setSelectedId(null) // clear selection so they can place it
             } else {
                 handleAddSticker2D(uploadedSrc)
             }
+        } catch (error) {
+            console.error("Image upload failed:", error)
+            alert("Failed to upload image. Please try again.")
+        } finally {
+            setIsSaving(false)
+            e.target.value = ''
         }
-        reader.readAsDataURL(file)
-        e.target.value = ''
     }
 
     const handleAddToCart = async () => {
         if (!selectedProduct) return
         
-        // If it's a 3D product, we export to GLB and save to Storage
+        // Save the configuration to local storage/cart context. 
+        // 3D files will be exported to Firebase only when placing the final order.
+        const designId = `${selectedProduct.id}-${Date.now()}`
+        
         if (selectedProduct.type === '3d') {
-            setIsSaving(true)
-            try {
-                const scene = viewerRef.current?.getScene()
-                if (!scene) throw new Error("Could not capture 3D scene")
-
-                console.log("[3D Export] Capturing scene...", scene)
-                console.log("[3D Export] Decals count:", decals3D.length)
-                
-                const designId = `${selectedProduct.id}-${Date.now()}`
-                
-                // 1. Export Scene to GLB
-                const exporter = new GLTFExporter()
-                const glbBlob = await new Promise((resolve, reject) => {
-                    exporter.parse(
-                        scene,
-                        (result) => {
-                            console.log("[3D Export] GLB Generated, size:", result.byteLength)
-                            const blob = new Blob([result], { type: 'model/gltf-binary' })
-                            resolve(blob)
-                        },
-                        (error) => {
-                            console.error("[3D Export] Exporter Error:", error)
-                            reject(error)
-                        },
-                        { binary: true }
-                    )
-                })
-
-                // 2. Upload GLB to Firebase Storage
-                const glbRef = ref(storage, `designs/${designId}/model.glb`)
-                const glbSnapshot = await uploadBytes(glbRef, glbBlob)
-                const glbUrl = await getDownloadURL(glbSnapshot.ref)
-
-                // 3. Create and Upload Metadata JSON
-                const metadata = {
-                    productId: selectedProduct.id,
-                    productName: selectedProduct.name,
-                    customization: { stickers, decals3D, selectedColor },
-                    modelUrl: glbUrl,
-                    timestamp: Date.now()
-                }
-                const metadataBlob = new Blob([JSON.stringify(metadata)], { type: 'application/json' })
-                const metadataRef = ref(storage, `designs/${designId}/metadata.json`)
-                const metadataSnapshot = await uploadBytes(metadataRef, metadataBlob)
-                const metadataUrl = await getDownloadURL(metadataSnapshot.ref)
-
-                // 4. Add to Cart with Storage URLs
-                addItem({
-                    id: `custom-${designId}`,
-                    name: `Custom ${selectedProduct.name}`,
-                    price: selectedProduct.price,
-                    image: selectedProduct.image,
-                    category: 'Custom',
-                    customizable: true,
-                    productId: selectedProduct.id,
-                    designId: designId,
-                    modelUrl: glbUrl,
-                    metadataUrl: metadataUrl,
-                    customization: metadata.customization
-                })
-            } catch (error) {
-                console.error("Export Error:", error)
-                alert("Failed to save 3D design to cloud storage. Please try again.")
-            } finally {
-                setIsSaving(false)
-            }
-        } else {
-            // 2D fallback (standard persistence)
             addItem({
-                id: `custom-${selectedProduct.id}-${Date.now()}`,
+                id: `custom-${designId}`,
                 name: `Custom ${selectedProduct.name}`,
                 price: selectedProduct.price,
                 image: selectedProduct.image,
                 category: 'Custom',
                 customizable: true,
                 productId: selectedProduct.id,
-                customization: {
-                    stickers,
-                    selectedColor,
-                    productType: selectedProduct.type
-                }
+                designId: designId,
+                customization: { stickers, decals3D, selectedColor }
             })
+            alert('Custom 3D design added to cart!')
+        } else {
+            addItem({
+                id: `custom-${designId}`,
+                name: `Custom ${selectedProduct.name}`,
+                price: selectedProduct.price,
+                image: selectedProduct.image,
+                category: 'Custom',
+                customizable: true,
+                productId: selectedProduct.id,
+                designId: designId,
+                customization: { stickers, selectedColor } 
+            })
+            alert('Custom 2D design added to cart!')
         }
     }
 

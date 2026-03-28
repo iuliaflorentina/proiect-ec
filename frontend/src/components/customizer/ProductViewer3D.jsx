@@ -54,7 +54,12 @@ function Model({ product, currentColor, decals, activeSticker, selectedId, setSe
     const decalsMeshesRef = useRef({}) // to keep track of created meshes for selection
 
     useEffect(() => {
-        if (!decalsGroupRef.current) return
+        if (!decalsGroupRef.current || !clonedScene) return
+
+        // Force matrix update before DecalGeometry creates the projection!
+        // This is necessary because on initial load ("Edit Design"), 
+        // the WebGL renderer hasn't computed world matrices yet, making the targetMesh completely offset.
+        clonedScene.updateMatrixWorld(true)
 
         // Clear old decals
         while (decalsGroupRef.current.children.length > 0) {
@@ -64,6 +69,7 @@ function Model({ product, currentColor, decals, activeSticker, selectedId, setSe
 
         const textureLoader = new THREE.TextureLoader().setCrossOrigin('anonymous')
 
+        console.log("[ProductViewer3D] Re-applying decals, count:", decals.length)
         decals.forEach(decal => {
             // find the mesh in clonedScene
             let targetMesh = null
@@ -72,6 +78,7 @@ function Model({ product, currentColor, decals, activeSticker, selectedId, setSe
                     targetMesh = child
                 }
             })
+            console.log("[ProductViewer3D] Decal:", decal.id, "Target mesh:", decal.meshName, "Found:", !!targetMesh)
 
             if (targetMesh) {
                 // decal parameters
