@@ -3,10 +3,12 @@ const admin = require('firebase-admin');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const axios = require('axios');
-
 dotenv.config();
 
+const stripe = require('stripe')(process.env.SECRET_KEY_STRIPE);
+
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -81,8 +83,14 @@ app.post('/api/users', authenticate, async (req, res) => {
 
 app.post('/api/orders', authenticate, async (req, res) => {
   try {
+    const { items, shipping, total, paymentMethod, paymentId } = req.body;
     const orderData = {
-      ...req.body,
+      items,
+      shipping,
+      total,
+      paymentMethod,
+      paymentId: paymentId || null,
+      status: paymentMethod === 'card' ? 'paid' : 'pending_delivery',
       userId: req.user.uid,
       userEmail: req.user.email,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -91,6 +99,121 @@ app.post('/api/orders', authenticate, async (req, res) => {
     res.status(201).send({ id: docRef.id });
   } catch (error) {
     console.error('Error creating order:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.post('/api/payment/create-checkout-session', authenticate, async (req, res) => {
+  try {
+    const { items, shipping, total } = req.body;
+    const origin = req.get('origin') || 'http://localhost:5173';
+
+    const line_items = items.map(item => ({
+      price_data: {
+        currency: 'usd',
+        product_data: {
+          name: item.name,
+          images: item.metadataUrl ? [item.metadataUrl] : [],
+        },
+        unit_amount: Math.round(item.price * 100),
+      },
+      quantity: item.quantity,
+    }));
+
+    // Add shipping as a line item if applicable
+    const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    if (subtotal <= 150) {
+      line_items.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Shipping',
+          },
+          unit_amount: 1299, // $12.99
+        },
+        quantity: 1,
+      });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items,
+      mode: 'payment',
+      success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/checkout`,
+      metadata: {
+        userId: req.user.uid,
+        userEmail: req.user.email,
+        shipping: JSON.stringify(shipping),
+        items: JSON.stringify(items.map(i => ({ 
+          id: i.id, 
+          quantity: i.quantity, 
+          name: i.name, 
+          price: i.price,
+          metadataUrl: i.metadataUrl || null,
+          image: i.image || null,
+          modelPath: i.modelPath || null,
+          type: i.type || '2d'
+        })))
+      }
+    });
+
+    res.status(200).json({ url: session.url });
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+app.get('/api/payment/session/:sessionId', authenticate, async (req, res) => {
+  try {
+    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    res.status(200).json(session);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/orders/confirm-stripe', authenticate, async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status !== 'paid') {
+      return res.status(400).send('Payment not completed');
+    }
+
+    // Check if order already exists for this session to prevent duplicates
+    const existing = await db.collection('orders').where('paymentId', '==', sessionId).get();
+    if (!existing.empty) {
+      return res.status(200).send({ id: existing.docs[0].id });
+    }
+
+    const metadata = session.metadata;
+    const shipping = JSON.parse(metadata.shipping);
+    const itemsSummary = JSON.parse(metadata.items);
+    
+    // Prioritize full items from request body (including customization) over metadata summary
+    const finalItems = req.body.items || itemsSummary;
+
+    const orderData = {
+      items: finalItems, 
+      shipping,
+      total: (session.amount_total / 100).toFixed(2),
+      paymentMethod: 'card',
+      paymentId: sessionId,
+      status: 'paid',
+      userId: req.user.uid,
+      userEmail: req.user.email,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    const docRef = await db.collection('orders').add(orderData);
+    res.status(201).send({ id: docRef.id });
+  } catch (error) {
+    console.error('Error confirming stripe order:', error);
     res.status(500).send('Internal Server Error');
   }
 });
