@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 
+
 const STEPS = ['Shipping', 'Payment', 'Confirm']
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -13,13 +14,13 @@ export default function CheckoutPage() {
   const [placed, setPlaced] = useState(false)
   const [placingOrder, setPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('card') // 'card' or 'ramburs'
   const { items, subtotal, clearCart } = useCart()
   const { user, getToken } = useAuth()
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: user?.email || '', address: '', city: '', zip: '', country: '',
-    cardNumber: '', cardExpiry: '', cardCvv: '',
   })
 
   const handleChange = (e) =>
@@ -34,6 +35,8 @@ export default function CheckoutPage() {
     setOrderError('')
     try {
       const token = await getToken()
+      const totalAmount = (subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)
+      
       const shipping = {
         firstName: form.firstName,
         lastName: form.lastName,
@@ -44,6 +47,32 @@ export default function CheckoutPage() {
         zip: form.zip,
         country: form.country,
       }
+
+      if (paymentMethod === 'card') {
+        const res = await fetch(`${API}/api/payment/create-checkout-session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            items,
+            shipping,
+            total: totalAmount,
+          }),
+        })
+        
+        if (!res.ok) throw new Error('Failed to create checkout session')
+        const { url } = await res.json()
+        
+        // Bridge customization data to success page via localStorage
+        localStorage.setItem('pending_stripe_items', JSON.stringify(items));
+        
+        window.location.href = url
+        return
+      }
+
+      // Handle Ramburs
       const res = await fetch(`${API}/api/orders`, {
         method: 'POST',
         headers: {
@@ -63,7 +92,8 @@ export default function CheckoutPage() {
             metadataUrl
           })),
           shipping,
-          total: (subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2),
+          total: totalAmount,
+          paymentMethod,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
@@ -75,6 +105,7 @@ export default function CheckoutPage() {
       setPlacingOrder(false)
     }
   }
+
 
   if (!user) {
     return (
@@ -182,27 +213,43 @@ export default function CheckoutPage() {
           )}
 
           {step === 1 && (
-            <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-              <h2 className="text-lg font-semibold text-foreground">Payment Details</h2>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">Card Number</label>
-                <input name="cardNumber" value={form.cardNumber} onChange={handleChange} className={inputCls} placeholder="4242 4242 4242 4242" maxLength={19} />
-              </div>
+            <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+              <h2 className="text-lg font-semibold text-foreground">Payment Method</h2>
+              
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Expiry Date</label>
-                  <input name="cardExpiry" value={form.cardExpiry} onChange={handleChange} className={inputCls} placeholder="MM/YY" maxLength={5} />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">CVV</label>
-                  <input name="cardCvv" value={form.cardCvv} onChange={handleChange} className={inputCls} placeholder="123" maxLength={3} />
-                </div>
+                <button
+                  onClick={() => setPaymentMethod('card')}
+                  className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 p-6 transition-all ${paymentMethod === 'card' ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-card text-muted-foreground hover:border-border/80'}`}
+                >
+                  <CreditCard className="h-8 w-8" />
+                  <span className="font-semibold">Card</span>
+                </button>
+                <button
+                  onClick={() => setPaymentMethod('ramburs')}
+                  className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 p-6 transition-all ${paymentMethod === 'ramburs' ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-card text-muted-foreground hover:border-border/80'}`}
+                >
+                  <ShoppingBag className="h-8 w-8" />
+                  <span className="font-semibold">Ramburs</span>
+                </button>
               </div>
+
+              {paymentMethod === 'card' && (
+                <div className="rounded-lg bg-primary/5 p-4 text-sm text-foreground/80 border border-primary/20">
+                  <p>You will be redirected to Stripe to securely complete your payment.</p>
+                </div>
+              )}
+
+
+              {paymentMethod === 'ramburs' && (
+                <div className="rounded-lg bg-primary/5 p-4 text-sm text-foreground/80 border border-primary/20">
+                  <p>You will pay for the order in cash when it is delivered to your address. Please ensure you have the exact amount ready.</p>
+                </div>
+              )}
+
               <Button 
                 className="w-full" 
                 size="lg" 
                 onClick={() => setStep(2)}
-                disabled={!form.cardNumber || !form.cardExpiry || !form.cardCvv}
               >
                 Review Order <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -212,11 +259,22 @@ export default function CheckoutPage() {
           {step === 2 && (
             <div className="rounded-xl border border-border bg-card p-6 space-y-4">
               <h2 className="text-lg font-semibold text-foreground">Review Your Order</h2>
+              
+              {orderError && (
+                <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
+                  {orderError}
+                </div>
+              )}
+
               <div className="space-y-3">
                 {items.map((item) => (
                   <div key={item.id} className="flex items-center gap-3">
-                    <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
-                      <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+                    <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                      {item.metadataUrl ? (
+                         <img src={item.metadataUrl} alt={item.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+                      )}
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-foreground">{item.name}</p>
@@ -226,29 +284,37 @@ export default function CheckoutPage() {
                   </div>
                 ))}
               </div>
-              <div className="border-t border-border pt-3 flex justify-between font-semibold text-foreground">
-                <span>Total (incl. ship)</span>
-                <span>${(subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)}</span>
+
+              <div className="border-t border-border pt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                   <span className="text-muted-foreground">Payment Method</span>
+                   <span className="font-medium text-foreground uppercase">{paymentMethod}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg text-foreground pt-2 border-t border-border/50">
+                  <span>Total (incl. ship)</span>
+                  <span>${(subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)}</span>
+                </div>
               </div>
+
               <Button className="w-full" size="lg" onClick={handlePlace} disabled={placingOrder}>
-                {placingOrder ? 'Placing Order...' : 'Place Order'} <CheckCircle className="ml-2 h-4 w-4" />
+                {placingOrder ? 'Processing...' : `Pay & Place Order`} <CheckCircle className="ml-2 h-4 w-4" />
               </Button>
             </div>
           )}
         </div>
 
-        <div className="h-fit rounded-xl border border-border bg-card p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Summary</h3>
+        <div className="h-fit rounded-xl border border-border bg-card p-4 space-y-3 shadow-lg">
+          <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">Order Summary</h3>
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Subtotal</span>
-              <span className="text-foreground">${subtotal.toFixed(2)}</span>
+              <span className="text-foreground font-medium">${subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Shipping</span>
-              <span className="text-foreground">{subtotal > 150 ? 'FREE' : '$12.99'}</span>
+              <span className="text-foreground font-medium">{subtotal > 150 ? 'FREE' : '$12.99'}</span>
             </div>
-            <div className="border-t border-border pt-2 flex justify-between text-sm font-bold text-foreground">
+            <div className="border-t border-border pt-2 flex justify-between text-base font-bold text-primary">
               <span>Total</span>
               <span>${(subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)}</span>
             </div>

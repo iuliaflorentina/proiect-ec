@@ -13,6 +13,8 @@ import SignupPage from '@/pages/auth/SignupPage'
 import CustomizerPage from '@/pages/CustomizerPage'
 import AdminPage from '@/pages/AdminPage'
 import ProfilePage from '@/pages/ProfilePage'
+import OrderSuccessPage from '@/pages/OrderSuccessPage'
+
 
 export default function App() {
     return (
@@ -25,7 +27,9 @@ export default function App() {
                             <Route path="/products" element={<ProductsPage />} />
                             <Route path="/cart" element={<CartPage />} />
                             <Route path="/checkout" element={<CheckoutPage />} />
+                            <Route path="/checkout/success" element={<OrderSuccessPage />} />
                             <Route path="/gallery" element={<GalleryPage />} />
+
                             <Route path="/reviews" element={<ReviewsPage />} />
                             <Route path="/auth/login" element={<LoginPage />} />
                             <Route path="/auth/signup" element={<SignupPage />} />

@@ -7,7 +7,17 @@ import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js'
 
 function Model({ product, currentColor, decals, activeSticker, selectedId, setSelectedId, onAddDecal, onUpdateDecal, onPlaceSticker, onDraggingChange, sceneRef, readOnly }) {
     const defaultModel = '/models/nike_air_jordan.glb'
-    let modelPath = product?.modelPath || defaultModel
+    const tShirtModel = '/models/tshirt_new.glb'
+    
+    let modelPath = product?.modelPath
+    
+    // Smart fallback if modelPath is missing but name hints at a T-Shirt
+    if (!modelPath && product?.name?.toLowerCase().includes('t-shirt')) {
+        modelPath = tShirtModel
+    } else if (!modelPath) {
+        modelPath = defaultModel
+    }
+
     if (modelPath === '/models/oversized_tshirt.glb') {
         modelPath = '/models/oversized_tshirt_opt.glb'
     }

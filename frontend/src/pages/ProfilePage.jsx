@@ -141,7 +141,7 @@ export default function ProfilePage() {
                           <span className="ml-1 text-muted-foreground">×{item.quantity}</span>
                         </span>
                         <span className="text-muted-foreground">
-                          ${(item.price * item.quantity).toFixed(2)}
+                          ${((item.price || 0) * item.quantity).toFixed(2)}
                         </span>
                       </div>
                     ))}

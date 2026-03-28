@@ -12,6 +12,7 @@ export default function AdminPage() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
   const [gallery, setGallery] = useState([])
+  const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('orders')
   const [error, setError] = useState('')
@@ -170,6 +171,10 @@ export default function AdminPage() {
 
         // Fetch Gallery
         await fetchGallery()
+
+        // Fetch Products for fallbacks
+        const productsRes = await fetch(`${API}/api/products`)
+        if (productsRes.ok) setProducts(await productsRes.json())
       } catch (err) {
         setError(err.message)
       } finally {
@@ -383,53 +388,85 @@ export default function AdminPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
+                        <td className="px-6 py-4 outline-none">
+                          <div className="space-y-4">
                             {(order.items || []).map((item, i) => (
-                              <div key={i} className="flex flex-col gap-1 border-b border-border/30 last:border-0 pb-2 mb-2 last:pb-0 last:mb-0">
-                                <div className="flex items-center justify-between gap-4 text-xs">
-                                  <span className="font-medium text-foreground">{item.name} ×{item.quantity}</span>
-                                  <div className="flex items-center gap-2">
-                                    {item.customization && (
-                                      <Link
-                                        to="/customize"
-                                        state={{
-                                          productId: item.productId,
-                                          productPayload: { 
-                                            ...item, 
-                                            type: (item.type || (item.customization?.decals3D?.length > 0 ? '3d' : '2d'))
-                                          },
-                                          customization: item.customization,
-                                          readOnly: true
-                                        }}
-                                        className="flex items-center gap-1 font-bold text-primary hover:underline hover:text-primary/80 transition-colors"
-                                      >
-                                        <Sparkles className="h-3 w-3" />
-                                        Design
-                                      </Link>
-                                    )}
-                                    {item.modelUrl && (
-                                      <a 
-                                        href={item.modelUrl} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1 font-bold text-muted-foreground hover:text-foreground transition-colors"
-                                      >
-                                        <Download className="h-3 w-3" />
-                                        GLB
-                                      </a>
+                              <div key={i} className="flex items-start gap-4 border-b border-border/30 last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
+                                {/* Design Preview Thumbnail */}
+                                <div className="h-16 w-16 overflow-hidden rounded-lg border border-border bg-muted shrink-0 shadow-sm transition-transform hover:scale-110">
+                                   {item.metadataUrl || item.image ? (
+                                      <img 
+                                        src={item.metadataUrl || item.image} 
+                                        alt={item.name} 
+                                        className="h-full w-full object-cover" 
+                                      />
+                                   ) : (
+                                      <div className="flex h-full w-full items-center justify-center">
+                                        <ImageIcon className="h-6 w-6 text-muted-foreground/40" />
+                                      </div>
+                                   )}
+                                </div>
+
+                                <div className="flex-1 space-y-1">
+                                  <div className="flex items-center justify-between gap-4">
+                                    <span className="font-bold text-foreground text-sm uppercase tracking-tight">{item.name} ×{item.quantity}</span>
+                                    <div className="flex items-center gap-2">
+                                      {item.customization ? (
+                                        <Link
+                                          to="/customize"
+                                          state={{
+                                            productId: item.productId,
+                                            productPayload: { 
+                                              ...item, 
+                                              type: (item.type || (item.customization?.decals3D?.length > 0 ? '3d' : '2d'))
+                                            },
+                                            customization: item.customization,
+                                            readOnly: true
+                                          }}
+                                          className="flex items-center gap-1 font-bold text-primary hover:underline hover:text-primary/80 transition-colors bg-primary/5 px-2 py-1 rounded text-[10px]"
+                                        >
+                                          <Sparkles className="h-3 w-3" />
+                                          SEE DESIGN
+                                        </Link>
+                                      ) : (
+                                        <a 
+                                          href={item.metadataUrl || item.image || products.find(p => p.name === item.name)?.image || `/products`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-1 font-bold text-primary hover:underline hover:text-primary/80 transition-colors bg-primary/5 px-2 py-1 rounded text-[10px]"
+                                        >
+                                          <ImageIcon className="h-3 w-3" />
+                                          SEE DESIGN
+                                        </a>
+                                      )}
+                                      {item.modelUrl && (
+                                        <a 
+                                          href={item.modelUrl} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-1 font-bold text-muted-foreground hover:text-foreground transition-colors bg-secondary/20 px-2 py-1 rounded text-[10px]"
+                                        >
+                                          <Download className="h-3 w-3" />
+                                          GLB
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex flex-wrap gap-2 items-center">
+                                    <span className="text-xs font-semibold text-muted-foreground">${(item.price || 0).toFixed(2)} / unit</span>
+                                    {item.designId && (
+                                      <span className="text-[10px] text-muted-foreground/60 font-mono bg-background px-1.5 py-0.5 rounded border border-border">
+                                        ID: {item.designId}
+                                      </span>
                                     )}
                                   </div>
                                 </div>
-                                {item.designId && (
-                                  <div className="text-[10px] text-muted-foreground/60 font-mono">
-                                    ID: {item.designId}
-                                  </div>
-                                )}
                               </div>
                             ))}
                           </div>
                         </td>
+
                         <td className="px-6 py-4 font-semibold text-foreground">
                           ${parseFloat(order.total || 0).toFixed(2)}
                         </td>
