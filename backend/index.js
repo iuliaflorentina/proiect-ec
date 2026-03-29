@@ -12,6 +12,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Caching middleware for public GE endpoints
+const cacheMiddleware = (seconds) => (req, res, next) => {
+  res.set('Cache-Control', `public, max-age=${seconds}`);
+  next();
+};
+
 const serviceAccount = require('./serviceKey.json');
 
 admin.initializeApp({
@@ -250,7 +256,30 @@ app.get('/api/admin/orders', authenticate, isAdmin, async (req, res) => {
   }
 })
 
-app.get('/api/products', async (req, res) => {
+app.get('/api/products/counts', cacheMiddleware(300), async (req, res) => {
+  try {
+    const snapshot = await db.collection('products').get();
+    const counts = {
+      sneakers: 0,
+      hoodies: 0,
+      jackets: 0,
+      tees: 0
+    };
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const category = data.category;
+      if (data.type === '2d' && counts.hasOwnProperty(category)) {
+        counts[category]++;
+      }
+    });
+    res.status(200).json(counts);
+  } catch (error) {
+    console.error('Error fetching product counts:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.get('/api/products', cacheMiddleware(300), async (req, res) => {
   try {
     const snapshot = await db.collection('products').orderBy('createdAt', 'desc').get();
     const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -291,7 +320,7 @@ app.put('/api/products/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/gallery', async (req, res) => {
+app.get('/api/gallery', cacheMiddleware(300), async (req, res) => {
   try {
     const snapshot = await db.collection('gallery').orderBy('createdAt', 'desc').get();
     const galleryItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
