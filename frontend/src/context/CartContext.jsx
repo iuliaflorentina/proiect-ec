@@ -7,6 +7,7 @@ export function CartProvider({ children }) {
         const saved = localStorage.getItem('cart')
         return saved ? JSON.parse(saved) : []
     })
+    const [appliedCoupon, setAppliedCoupon] = useState(null)
 
     useEffect(() => {
         localStorage.setItem('cart', JSON.stringify(items))
@@ -36,13 +37,16 @@ export function CartProvider({ children }) {
         setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity } : i)))
     }
 
-    const clearCart = () => setItems([])
+    const clearCart = () => {
+        setItems([])
+        setAppliedCoupon(null)
+    }
 
     const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
 
     return (
         <CartContext.Provider
-            value={{ items, addItem, removeItem, updateQuantity, clearCart, subtotal }}
+            value={{ items, addItem, removeItem, updateQuantity, clearCart, subtotal, appliedCoupon, setAppliedCoupon }}
         >
             {children}
         </CartContext.Provider>

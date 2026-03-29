@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette, Home, Star, ShoppingCart } from 'lucide-react'
+import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette, Home, Star, ShoppingCart, Ticket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/context/AuthContext'
@@ -24,6 +24,9 @@ export default function AdminPage() {
   const [isSeedingGallery, setIsSeedingGallery] = useState(false)
   const [selectedGalleryItem, setSelectedGalleryItem] = useState(null)
   const [isGalleryModalOpen, setIsGalleryModalOpen] = useState(false)
+  const [coupons, setCoupons] = useState([])
+  const [newCoupon, setNewCoupon] = useState({ code: '', type: 'percent', value: '', minAmount: '', expiresAt: '' })
+  const [isCreatingCoupon, setIsCreatingCoupon] = useState(false)
 
   // Search and Filter State
   const [searchTerm, setSearchTerm] = useState('')
@@ -114,6 +117,12 @@ export default function AdminPage() {
         // Fetch Products for fallbacks
         const productsRes = await fetch(`${API}/api/products`)
         if (productsRes.ok) setProducts(await productsRes.json())
+
+        // Fetch Coupons
+        const couponsRes = await fetch(`${API}/api/admin/coupons`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (couponsRes.ok) setCoupons(await couponsRes.json())
       } catch (err) {
         setError(err.message)
       } finally {
@@ -169,6 +178,50 @@ export default function AdminPage() {
         alert('Product deleted successfully')
       } else {
         throw new Error('Failed to delete product')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleCreateCoupon = async (e) => {
+    e.preventDefault()
+    setIsCreatingCoupon(true)
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API}/api/admin/coupons`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newCoupon)
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setCoupons(prev => [created, ...prev])
+        setNewCoupon({ code: '', type: 'percent', value: '', minAmount: '', expiresAt: '' })
+        alert('Coupon created successfully!')
+      } else {
+        throw new Error('Failed to create coupon')
+      }
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setIsCreatingCoupon(false)
+    }
+  }
+
+  const handleDeleteCoupon = async (id) => {
+    if (!window.confirm('Delete this coupon?')) return
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API}/api/admin/coupons/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setCoupons(prev => prev.filter(c => c.id !== id))
       }
     } catch (err) {
       alert(err.message)
@@ -356,6 +409,12 @@ export default function AdminPage() {
         >
           Product Management
         </button>
+        <button
+          onClick={() => setActiveTab('coupons')}
+          className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'coupons' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Promotions & Coupons
+        </button>
       </div>
 
       {activeTab === 'orders' ? (
@@ -505,8 +564,23 @@ export default function AdminPage() {
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 font-semibold text-foreground">
-                          ${parseFloat(order.total || 0).toFixed(2)}
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold text-foreground font-orbitron">${parseFloat(order.total || 0).toFixed(2)}</span>
+                            {(parseFloat(order.discount || 0) > 0 || order.subtotal) && (
+                              <div className="text-[9px] font-bold uppercase tracking-tight text-muted-foreground/60 flex flex-col italic">
+                                {order.subtotal && <span>Sub: ${parseFloat(order.subtotal).toFixed(2)}</span>}
+                                {parseFloat(order.discount || 0) > 0 && (
+                                  <span className="text-green-500/70 truncate max-w-[100px]">
+                                    -{parseFloat(order.discount).toFixed(2)} {order.couponCode ? `(${order.id.slice(-4)})` : ''}
+                                  </span>
+                                )}
+                                {order.shippingCost !== undefined && (
+                                  <span>Ship: {parseFloat(order.shippingCost) === 0 ? 'FREE' : `$${parseFloat(order.shippingCost).toFixed(2)}`}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <select
@@ -547,6 +621,92 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+        </div>
+      ) : activeTab === 'coupons' ? (
+        <div className="space-y-8">
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-1">
+                 <div className="rounded-xl border border-border bg-card p-6 shadow-sm sticky top-24">
+                    <h3 className="text-lg font-bold text-foreground mb-4 font-orbitron">Create New Coupon</h3>
+                    <form onSubmit={handleCreateCoupon} className="space-y-4">
+                       <div>
+                          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground font-orbitron">Code</label>
+                          <input required type="text" placeholder="SUMMER20" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" value={newCoupon.code} onChange={(e) => setNewCoupon({...newCoupon, code: e.target.value.toUpperCase()})} />
+                       </div>
+                       <div className="grid grid-cols-2 gap-3">
+                          <div>
+                             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground font-orbitron">Type</label>
+                             <select className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" value={newCoupon.type} onChange={(e) => setNewCoupon({...newCoupon, type: e.target.value})}>
+                                <option value="percent">Percent (%)</option>
+                                <option value="fixed">Fixed ($)</option>
+                             </select>
+                          </div>
+                          <div>
+                             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground font-orbitron">Value</label>
+                             <input required type="number" placeholder="20" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" value={newCoupon.value} onChange={(e) => setNewCoupon({...newCoupon, value: e.target.value})} />
+                          </div>
+                       </div>
+                       <div>
+                          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground font-orbitron">Min. Order ($)</label>
+                          <input type="number" placeholder="0" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" value={newCoupon.minAmount} onChange={(e) => setNewCoupon({...newCoupon, minAmount: e.target.value})} />
+                       </div>
+                       <div>
+                          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground font-orbitron">Expiry Date</label>
+                          <input type="date" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" value={newCoupon.expiresAt} onChange={(e) => setNewCoupon({...newCoupon, expiresAt: e.target.value})} />
+                       </div>
+                       <Button type="submit" className="w-full gap-2" disabled={isCreatingCoupon}>
+                          {isCreatingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          Generate Coupon
+                       </Button>
+                    </form>
+                 </div>
+              </div>
+              <div className="lg:col-span-2 space-y-4">
+                 <h3 className="text-lg font-bold text-foreground font-orbitron">Existing Campaigns</h3>
+                 {coupons.length === 0 ? (
+                   <div className="rounded-xl border border-border bg-card p-12 text-center opacity-50">
+                      <Ticket className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-20" />
+                      <p>No active promotional codes found.</p>
+                   </div>
+                 ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       {coupons.map(coupon => (
+                         <div key={coupon.id} className="rounded-xl border border-border bg-card p-5 shadow-sm group hover:border-primary/50 transition-colors">
+                            <div className="flex items-start justify-between mb-4">
+                               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                                  <Ticket className="h-5 w-5 text-primary" />
+                               </div>
+                               <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleDeleteCoupon(coupon.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                               </Button>
+                            </div>
+                            <div className="space-y-1">
+                               <h4 className="text-lg font-bold text-foreground tracking-tight font-orbitron">{coupon.code}</h4>
+                               <p className="text-xs font-black text-primary uppercase">{coupon.type === 'percent' ? `${coupon.value}% Off` : `$${coupon.value} Off`}</p>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-border/50 space-y-2 text-[10px] font-bold uppercase text-muted-foreground font-inter">
+                               <div className="flex justify-between">
+                                  <span>Min:</span> <span className="text-foreground">${coupon.minAmount || 0}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Status:</span> <span className={`${coupon.active ? 'text-green-500' : 'text-destructive'}`}>{coupon.active ? 'Active' : 'Expired'}</span>
+                                </div>
+                                {coupon.expiresAt && (function() {
+                                   const dateObj = coupon.expiresAt.toDate ? coupon.expiresAt.toDate() : new Date(coupon.expiresAt)
+                                   if (isNaN(dateObj.getTime())) return null
+                                   return (
+                                     <div className="flex justify-between">
+                                       <span>Expires:</span> <span className="text-foreground">{dateObj.toLocaleDateString()}</span>
+                                     </div>
+                                   )
+                                })()}
+                            </div>
+                         </div>
+                       ))}
+                    </div>
+                 )}
+              </div>
+           </div>
         </div>
       ) : activeTab === 'gallery' ? (
         <>

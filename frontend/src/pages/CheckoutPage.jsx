@@ -18,13 +18,21 @@ export default function CheckoutPage() {
   const [placingOrder, setPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('card') // 'card' or 'ramburs'
-  const { items, subtotal, clearCart } = useCart()
+  const { items, subtotal, clearCart, appliedCoupon } = useCart()
   const { user, getToken } = useAuth()
   const navigate = useNavigate()
-
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: user?.email || '', address: '', city: '', zip: '', country: '',
   })
+
+
+  const discountAmount = appliedCoupon 
+    ? (appliedCoupon.type === 'percent' ? subtotal * (appliedCoupon.value / 100) : appliedCoupon.value)
+    : 0;
+
+  const shippingCost = subtotal > 150 ? 0 : 12.99;
+  const totalAmount = (subtotal - discountAmount + shippingCost).toFixed(2);
+
 
   const handleChange = (e) =>
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
@@ -86,7 +94,7 @@ export default function CheckoutPage() {
         return { ...item, customization: nextCustomization };
       }));
 
-      const totalAmount = (subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)
+      // Use the pre-calculated totalAmount from above that includes the discount
       
       const shipping = {
         firstName: form.firstName,
@@ -110,6 +118,7 @@ export default function CheckoutPage() {
             items: processedItems,
             shipping,
             total: totalAmount,
+            couponCode: appliedCoupon?.code || null,
           }),
         })
         
@@ -145,6 +154,7 @@ export default function CheckoutPage() {
           shipping,
           total: totalAmount,
           paymentMethod,
+          couponCode: appliedCoupon?.code || null,
         }),
       })
       if (!res.ok) throw new Error(await res.text())
@@ -341,9 +351,15 @@ export default function CheckoutPage() {
                    <span className="text-muted-foreground">Payment Method</span>
                    <span className="font-medium text-foreground uppercase">{paymentMethod}</span>
                 </div>
-                <div className="flex justify-between font-bold text-lg text-foreground pt-2 border-t border-border/50">
-                  <span>Total (incl. ship)</span>
-                  <span>${(subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)}</span>
+                {appliedCoupon && (
+                   <div className="flex justify-between text-sm text-green-500 font-bold">
+                      <span>Discount ({appliedCoupon.code})</span>
+                      <span>-${discountAmount.toFixed(2)}</span>
+                   </div>
+                )}
+                <div className="flex justify-between font-bold text-lg text-primary pt-2 border-t border-border/50">
+                  <span>Grand Total</span>
+                  <span>${totalAmount}</span>
                 </div>
               </div>
 
@@ -354,22 +370,33 @@ export default function CheckoutPage() {
           )}
         </div>
 
-        <div className="h-fit rounded-xl border border-border bg-card p-4 space-y-3 shadow-lg">
+        <div className="h-fit rounded-xl border border-border bg-card p-4 space-y-4 shadow-lg">
           <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">Order Summary</h3>
+          
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Subtotal</span>
               <span className="text-foreground font-medium">${subtotal.toFixed(2)}</span>
             </div>
+            
+            {appliedCoupon && (
+              <div className="flex justify-between text-xs text-green-500 font-medium">
+                <span>Discount ({appliedCoupon.code})</span>
+                <span>-${discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Shipping</span>
-              <span className="text-foreground font-medium">{subtotal > 150 ? 'FREE' : '$12.99'}</span>
+              <span className="text-foreground font-medium">{shippingCost === 0 ? 'FREE' : `$${shippingCost}`}</span>
             </div>
+            
             <div className="border-t border-border pt-2 flex justify-between text-base font-bold text-primary">
               <span>Total</span>
-              <span>${(subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)}</span>
+              <span>${totalAmount}</span>
             </div>
           </div>
+
         </div>
       </div>
     </div>

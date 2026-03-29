@@ -1,25 +1,51 @@
 import { Link } from 'react-router-dom'
-import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Sparkles, Download } from 'lucide-react'
+import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, Sparkles, Download, Loader2, Lock, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCart } from '@/context/CartContext'
 import { useState } from 'react'
+import { useAuth } from '@/context/AuthContext'
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 export default function CartPage() {
-    const { items, removeItem, updateQuantity, subtotal, clearCart } = useCart()
+    const { items, removeItem, updateQuantity, subtotal, appliedCoupon, setAppliedCoupon } = useCart()
+    const { getToken } = useAuth()
     const [promoCode, setPromoCode] = useState('')
-    const [discount, setDiscount] = useState(0)
-    const [promoApplied, setPromoApplied] = useState(false)
+    const [couponError, setCouponError] = useState('')
+    const [isValidatingCoupon, setIsValidatingCoupon] = useState(false)
 
     const shipping = subtotal > 150 ? 0 : 12.99
-    const discountAmount = subtotal * discount
-    const total = subtotal - discountAmount + shipping
-
-    const applyPromo = () => {
-        if (promoCode.toUpperCase() === 'BRUSHCRAFT10') {
-            setDiscount(0.1)
-            setPromoApplied(true)
+    
+    const handleApplyCoupon = async () => {
+        if (!promoCode) return;
+        setIsValidatingCoupon(true)
+        setCouponError('')
+        try {
+            const token = await getToken()
+            const res = await fetch(`${API}/api/coupons/validate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ code: promoCode, subtotal })
+            })
+            if (!res.ok) throw new Error(await res.text())
+            const data = await res.json()
+            setAppliedCoupon(data)
+        } catch (err) {
+            setCouponError(err.message)
+            setAppliedCoupon(null)
+        } finally {
+            setIsValidatingCoupon(false)
         }
     }
+
+    const discountAmount = appliedCoupon 
+        ? (appliedCoupon.type === 'percent' ? subtotal * (appliedCoupon.value / 100) : appliedCoupon.value)
+        : 0;
+
+    const total = subtotal - discountAmount + shipping
 
     if (items.length === 0) {
         return (
@@ -53,12 +79,16 @@ export default function CartPage() {
                             key={item.id}
                             className="flex gap-4 rounded-xl border border-border bg-card p-4"
                         >
-                            <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg">
-                                <img
-                                    src={item.image}
-                                    alt={item.name}
-                                    className="h-full w-full object-cover"
-                                />
+                            <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center">
+                                {item.image ? (
+                                    <img
+                                        src={item.image}
+                                        alt={item.name}
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <ShoppingBag className="h-8 w-8 text-muted-foreground" />
+                                )}
                             </div>
                             <div className="flex flex-1 flex-col">
                                 <div className="flex justify-between">
@@ -135,9 +165,9 @@ export default function CartPage() {
                             <span>Subtotal</span>
                             <span>${subtotal.toFixed(2)}</span>
                         </div>
-                        {discount > 0 && (
-                            <div className="flex justify-between text-primary">
-                                <span>Discount (10%)</span>
+                        {appliedCoupon && (
+                            <div className="flex justify-between text-green-500 font-bold italic animate-in fade-in slide-in-from-right-1">
+                                <span>Discount ({appliedCoupon.code})</span>
                                 <span>-${discountAmount.toFixed(2)}</span>
                             </div>
                         )}
@@ -145,42 +175,61 @@ export default function CartPage() {
                             <span>Shipping</span>
                             <span>{shipping === 0 ? 'Free' : `$${shipping.toFixed(2)}`}</span>
                         </div>
-                        <div className="border-t border-border pt-2 flex justify-between font-semibold text-foreground">
+                        <div className="border-t border-border pt-2 flex justify-between font-bold text-lg text-primary font-orbitron">
                             <span>Total</span>
                             <span>${total.toFixed(2)}</span>
                         </div>
                     </div>
 
                     {/* Promo code */}
-                    <div>
-                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    <div className="pt-4 border-t border-border/50">
+                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                             Promo Code
                         </label>
                         <div className="flex gap-2">
                             <input
                                 type="text"
                                 value={promoCode}
-                                onChange={(e) => setPromoCode(e.target.value)}
-                                placeholder="BRUSHCRAFT10"
-                                disabled={promoApplied}
-                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                                onChange={(e) => {
+                                    setPromoCode(e.target.value.toUpperCase())
+                                    setCouponError('')
+                                }}
+                                placeholder="PAINT50"
+                                disabled={appliedCoupon}
+                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
                             />
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={applyPromo}
-                                disabled={promoApplied}
+                                onClick={handleApplyCoupon}
+                                disabled={appliedCoupon || isValidatingCoupon || !promoCode}
+                                className="h-9 px-4 text-xs font-bold leading-none"
                             >
-                                {promoApplied ? '✓' : 'Apply'}
+                                {isValidatingCoupon ? <Loader2 className="h-3 w-3 animate-spin" /> : (appliedCoupon ? <CheckCircle className="h-3 w-3" /> : 'Apply')}
                             </Button>
                         </div>
-                        {promoApplied && (
-                            <p className="mt-1 text-xs text-primary">10% discount applied!</p>
+                        
+                        {/* Status Messages */}
+                        {couponError && (
+                            <div className="mt-3 rounded-lg bg-destructive/10 p-2 border border-destructive/20 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <p className="text-[10px] font-bold text-destructive flex items-center gap-1.5 uppercase tracking-tight">
+                                    <Lock className="h-3 w-3" />
+                                    {couponError}
+                                </p>
+                            </div>
+                        )}
+                        {appliedCoupon && (
+                            <div className="mt-3 rounded-lg bg-green-500/10 p-2 border border-green-500/20 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <p className="text-[10px] font-bold text-green-600 flex items-center gap-1.5 uppercase tracking-tight">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Coupon Applied Successfully!
+                                </p>
+                            </div>
                         )}
                     </div>
 
-                    <Link to="/checkout" className="block">
-                        <Button className="w-full" size="lg">
+                    <Link to="/checkout" className="block pt-2">
+                        <Button className="w-full font-orbitron tracking-widest" size="lg">
                             Proceed to Checkout
                             <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
@@ -188,7 +237,7 @@ export default function CartPage() {
 
                     <Link
                         to="/products"
-                        className="block text-center text-sm text-muted-foreground transition-colors hover:text-primary"
+                        className="block text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:text-primary pt-2"
                     >
                         Continue Shopping
                     </Link>

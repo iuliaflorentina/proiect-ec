@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { User, Package, LogOut, Calendar, ShoppingBag, Home } from 'lucide-react'
+import { User, Package, LogOut, Calendar, ShoppingBag, Home, Ticket, Sparkles, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
-
 import { ReviewModal } from '@/components/profile/ReviewModal'
 import { StatusStepper } from '@/components/profile/StatusStepper'
-import { Sparkles, MessageSquare } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -31,6 +29,7 @@ export default function ProfilePage() {
   const { user, logout, getToken } = useAuth()
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
+  const [coupons, setCoupons] = useState([])
   const [loading, setLoading] = useState(true)
   
   // Review Modal State
@@ -54,9 +53,22 @@ export default function ProfilePage() {
     }
   }
 
+  const fetchCoupons = async () => {
+    try {
+      const res = await fetch(`${API}/api/coupons/active`)
+      if (res.ok) {
+        const data = await res.json()
+        setCoupons(data)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   useEffect(() => {
     if (!user) { navigate('/auth/login'); return }
     fetchOrders()
+    fetchCoupons()
   }, [user, navigate, getToken])
 
   const handleLogout = async () => {
@@ -71,17 +83,17 @@ export default function ProfilePage() {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20">
             <User className="h-8 w-8" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">
+            <h1 className="text-2xl font-bold text-foreground font-orbitron">
               {user.displayName || 'My Account'}
             </h1>
             <p className="text-sm text-muted-foreground">{user.email}</p>
           </div>
         </div>
-        <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-foreground" onClick={handleLogout}>
+        <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary/20" onClick={handleLogout}>
           <LogOut className="h-4 w-4" />
           Sign out
         </Button>
@@ -89,140 +101,176 @@ export default function ProfilePage() {
 
       {/* Stats row */}
       <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-5">
-          <p className="text-2xl font-bold text-foreground">{orders.length}</p>
-          <p className="text-sm text-muted-foreground">Total Orders</p>
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <p className="text-2xl font-bold text-foreground font-orbitron">{orders.length}</p>
+          <p className="text-sm text-muted-foreground uppercase tracking-wider text-[10px] font-bold">Total Orders</p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-5">
-          <p className="text-2xl font-bold text-foreground">
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <p className="text-2xl font-bold text-foreground font-orbitron">
             ${orders.reduce((s, o) => s + parseFloat(o.total || 0), 0).toFixed(2)}
           </p>
-          <p className="text-sm text-muted-foreground">Total Spent</p>
+          <p className="text-sm text-muted-foreground uppercase tracking-wider text-[10px] font-bold">Total Spent</p>
         </div>
-        <div className="hidden rounded-xl border border-border bg-card p-5 sm:block">
-          <p className="truncate text-lg font-bold text-foreground">
-            {user.email}
-          </p>
-          <p className="text-sm text-muted-foreground">Email</p>
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 shadow-sm hover:border-primary/50 transition-colors">
+          <p className="text-2xl font-bold text-primary font-orbitron">{coupons.length}</p>
+          <p className="text-sm text-primary uppercase tracking-wider text-[10px] font-bold">Active Rewards</p>
         </div>
       </div>
 
-      {/* Order history */}
-      <div>
-        <h2 className="mb-4 text-lg font-semibold text-foreground">Order History</h2>
-
-        {loading ? (
-          <div className="py-12 text-center text-muted-foreground">Loading orders…</div>
-        ) : orders.length === 0 ? (
-          <div className="flex flex-col items-center rounded-xl border border-border bg-card py-16 text-center">
-            <ShoppingBag className="mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-foreground font-medium">No orders yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">Looks like you haven't placed an order.</p>
-            <Link to="/products" className="mt-6">
-              <Button size="sm">Shop Now</Button>
-            </Link>
+      {/* Coupons Section */}
+      {coupons.length > 0 && (
+        <div className="mb-12">
+          <div className="flex items-center gap-2 mb-4">
+            <Ticket className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-bold text-foreground font-orbitron">My Rewards</h2>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {orders.map((order) => {
-              const status = order.status || 'pending'
-              const statusCls = STATUS_STYLES[status] || STATUS_STYLES.default
-              const date = (function() {
-                if (!order.createdAt) return '—'
-                const s = order.createdAt._seconds ?? order.createdAt.seconds
-                if (s !== undefined) return new Date(s * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-                const d = new Date(order.createdAt)
-                return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-              })()
-              return (
-                <div key={order.id} className="rounded-xl border border-border bg-card p-5">
-                  {/* Order top row */}
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <Package className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-mono text-xs text-muted-foreground">
-                        #{order.id.slice(0, 8).toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Calendar className="h-3.5 w-3.5" />
-                      {date}
-                    </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {coupons.map(coupon => (
+              <div key={coupon.id} className="relative overflow-hidden rounded-xl border border-border bg-card p-5 transition-all hover:shadow-lg group">
+                <div className="absolute -right-4 -top-4 h-16 w-16 rotate-12 bg-primary/10 opacity-20 group-hover:scale-125 transition-transform" />
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground font-orbitron tracking-tight decoration-primary/30 underline-offset-4 decoration-2">{coupon.code}</h3>
+                    <p className="text-xs font-black text-primary uppercase tracking-widest mt-1">
+                       {coupon.type === 'percent' ? `${coupon.value}% DISCOUNT` : `$${coupon.value} DISCOUNT`}
+                    </p>
                   </div>
-
-                  {/* Enhanced Status Stepper */}
-                  <div className="mb-10 px-4">
-                    <StatusStepper currentStatus={status} paymentMethod={order.paymentMethod} />
-                  </div>
-
-                  {/* Items */}
-                  <div className="mb-4 space-y-4 border-t border-border pt-4">
-                    {(order.items || []).map((item, i) => (
-                      <div key={i} className="flex flex-col gap-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-3">
-                            {item.image && (
-                              <img src={item.image} alt={item.name} className="h-10 w-10 rounded-md object-cover border border-border" />
-                            )}
-                            <div className="flex flex-col">
-                              <span className="font-medium text-foreground">
-                                {item.name}
-                                <span className="ml-1 text-muted-foreground text-xs font-normal">×{item.quantity}</span>
-                              </span>
-                              <span className="text-xs text-muted-foreground font-mono">ID: {(item.productId || item.id || '').split('-')[0]}</span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-3">
-                            <span className="text-muted-foreground font-medium">
-                              ${((item.price || 0) * item.quantity).toFixed(2)}
-                            </span>
-                            
-                            {status === 'delivered' && (
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="h-8 gap-2 border-primary/20 hover:border-primary/50 text-[10px] font-bold uppercase tracking-wider"
-                                onClick={() => setReviewModal({
-                                  isOpen: true,
-                                  product: item,
-                                  orderId: order.id
-                                })}
-                              >
-                                <MessageSquare className="h-3 w-3" />
-                                Review
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Shipping */}
-                  {order.shipping && (
-                    <div className="mb-4 rounded-lg bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-                      <div className="flex items-start gap-3">
-                        <Home className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold text-foreground">Shipping Address</p>
-                          <p>{order.shipping.address}, {order.shipping.city}</p>
-                          <p>{order.shipping.zip} {order.shipping.country}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Total */}
-                  <div className="flex justify-end text-sm font-semibold text-foreground border-t border-border pt-3">
-                    Total: ${parseFloat(order.total || 0).toFixed(2)}
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary">
+                    <Sparkles className="h-5 w-5" />
                   </div>
                 </div>
-              )
-            })}
+                <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-4">
+                  <div className="text-[10px] space-y-1">
+                    <p className="text-muted-foreground uppercase font-bold tracking-tighter opacity-70">Min Order: ${coupon.minAmount || 0}</p>
+                    {coupon.expiresAt && (function() {
+                       const dateObj = coupon.expiresAt.toDate ? coupon.expiresAt.toDate() : new Date(coupon.expiresAt)
+                       if (isNaN(dateObj.getTime())) return null
+                       return (
+                         <p className="text-muted-foreground uppercase font-bold tracking-tighter opacity-70">
+                           Expires: {dateObj.toLocaleDateString()}
+                         </p>
+                       )
+                    })()}
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="link" 
+                    className="h-auto p-0 text-[10px] font-bold uppercase text-primary hover:no-underline"
+                    onClick={() => {
+                       navigator.clipboard.writeText(coupon.code)
+                       alert('Coupon code copied to clipboard!')
+                    }}
+                  >
+                    Copy Code
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Orders section */}
+      <h2 className="mb-4 text-xl font-bold text-foreground flex items-center gap-2 font-orbitron">
+        <Package className="h-5 w-5 text-primary" />
+        Order History
+      </h2>
+
+      {loading ? (
+        <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
+          <p className="text-muted-foreground">Loading your orders...</p>
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
+          <ShoppingBag className="mx-auto h-12 w-12 text-muted-foreground opacity-20 mb-4" />
+          <p className="text-muted-foreground">You haven't placed any orders yet.</p>
+          <Link to="/products" className="mt-6 inline-block">
+            <Button variant="outline">Start Customizing</Button>
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {orders.map((order) => (
+            <div key={order.id} className="rounded-xl border border-border bg-card p-6 shadow-sm hover:border-primary/20 transition-all">
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-border/50 pb-4">
+                <div className="space-y-1">
+                   <p className="text-sm font-semibold text-foreground uppercase tracking-tight">Order #{order.id.slice(-8)}</p>
+                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Calendar className="h-3 w-3" />
+                      {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleDateString() : new Date(order.createdAt).toLocaleDateString()}
+                   </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_STYLES[order.status] || STATUS_STYLES.default}`}>
+                    {STATUS_LABELS[order.status] || order.status}
+                  </span>
+                  <p className="text-lg font-bold text-foreground font-orbitron">${parseFloat(order.total || 0).toFixed(2)}</p>
+                </div>
+              </div>
+
+              {/* Status Stepper */}
+              <div className="mb-8">
+                 <StatusStepper currentStatus={order.status} />
+              </div>
+
+              <div className="space-y-4">
+                {(order.items || []).map((item, i) => (
+                  <div key={i} className="flex items-center justify-between gap-4 rounded-lg bg-secondary/5 p-3 border border-border/30">
+                    <div className="flex items-center gap-3">
+                       <div className="h-12 w-12 rounded-lg bg-background flex items-center justify-center border border-border overflow-hidden">
+                          {item.metadataUrl || item.image ? (
+                             <img src={item.metadataUrl || item.image} className="h-full w-full object-cover" />
+                          ) : (
+                             <ShoppingBag className="h-5 w-5 text-muted-foreground" />
+                          )}
+                       </div>
+                       <div>
+                          <p className="text-sm font-bold text-foreground uppercase tracking-tight">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">Quantity: {item.quantity}</p>
+                       </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                       {order.status === 'delivered' && (
+                         <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-[10px] font-bold uppercase p-0 h-auto text-primary hover:text-primary/80"
+                            onClick={() => setReviewModal({ isOpen: true, product: item, orderId: order.id })}
+                         >
+                            Add Review
+                         </Button>
+                       )}
+                       <p className="text-sm font-bold text-foreground font-orbitron">${(item.price * item.quantity).toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))}
+                <div className="mt-6 space-y-2 border-t border-border/50 pt-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  {order.subtotal && (
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span className="text-foreground">${parseFloat(order.subtotal).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {parseFloat(order.discount || 0) > 0 && (
+                    <div className="flex justify-between text-green-500 italic">
+                      <span>Discount {order.couponCode ? `(${order.couponCode})` : ''}</span>
+                      <span>-${parseFloat(order.discount).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Shipping</span>
+                    <span className="text-foreground">{parseFloat(order.shippingCost || 0) === 0 ? 'FREE' : `$${parseFloat(order.shippingCost).toFixed(2)}`}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border/30 pt-2 text-sm text-primary font-orbitron">
+                    <span>Grand Total</span>
+                    <span>${parseFloat(order.total || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Review Modal */}
       {reviewModal.isOpen && (
@@ -231,9 +279,6 @@ export default function ProfilePage() {
           onClose={() => setReviewModal({ ...reviewModal, isOpen: false })}
           product={reviewModal.product}
           orderId={reviewModal.orderId}
-          onReviewSuccess={() => {
-            // Optional: fetch orders again or update a local 'reviewed' map
-          }}
         />
       )}
     </div>
