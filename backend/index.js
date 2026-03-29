@@ -371,6 +371,125 @@ app.delete('/api/gallery/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
+// Reviews API
+
+// GET all reviews with product info
+app.get('/api/reviews', async (req, res) => {
+  try {
+    const snapshot = await db.collection('reviews').orderBy('createdAt', 'desc').get();
+    const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).json(reviews);
+  } catch (error) {
+    console.error('Error fetching global reviews:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// GET reviews for a specific product
+app.get('/api/reviews/:productId', async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection('reviews')
+      .where('productId', '==', req.params.productId)
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).json(reviews);
+  } catch (error) {
+    console.error('Error fetching product reviews:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// POST a new review (Authenticated + Verified Purchase)
+app.post('/api/reviews', authenticate, async (req, res) => {
+  const { productId, productName, rating, comment, orderId } = req.body;
+
+  if (!productId || !rating || !orderId) {
+    return res.status(400).send('Missing required fields');
+  }
+
+  try {
+    // 1. Verify payment/order exists for this user and contains the product
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderDoc = await orderRef.get();
+
+    if (!orderDoc.exists) {
+      return res.status(404).send('Order not found');
+    }
+
+    const orderData = orderDoc.data();
+    if (orderData.userId !== req.user.uid) {
+      return res.status(403).send('Unauthorized: You can only review your own orders');
+    }
+
+    // Current orders use "paid" status from Stripe
+    if (orderData.status !== 'paid' && orderData.status !== 'delivered') {
+      return res.status(400).send('Order must be paid or delivered to write a review');
+    }
+
+    const hasProduct = (orderData.items || []).some(item => 
+      item.productId === productId || item.id === productId || item.name === productName
+    );
+
+    if (!hasProduct) {
+      return res.status(400).send('Product not found in this order');
+    }
+
+    // 2. Check if already reviewed for this product in this order
+    const existing = await db.collection('reviews')
+      .where('userId', '==', req.user.uid)
+      .where('productId', '==', productId)
+      .where('orderId', '==', orderId)
+      .get();
+
+    if (!existing.empty) {
+      return res.status(400).send('You have already reviewed this product for this order');
+    }
+
+    // 3. Create review
+    const reviewData = {
+      userId: req.user.uid,
+      userName: req.user.name || orderData.shipping?.firstName || 'Anonymous',
+      userEmail: req.user.email,
+      productId,
+      productName,
+      orderId,
+      rating: Number(rating),
+      comment: comment || '',
+      verified: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    const reviewRef = await db.collection('reviews').add(reviewData);
+
+    // 4. Update Product aggregation (denormalization)
+    const productRef = db.collection('products').doc(productId);
+    await db.runTransaction(async (transaction) => {
+      const pDoc = await transaction.get(productRef);
+      if (pDoc.exists) {
+        const pData = pDoc.data();
+        const oldRating = pData.rating || 0;
+        const oldCount = pData.reviews || 0;
+        const newCount = oldCount + 1;
+        const newRating = ((oldRating * oldCount) + Number(rating)) / newCount;
+
+        transaction.update(productRef, {
+          rating: Number(newRating.toFixed(1)),
+          reviews: newCount,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    });
+
+    res.status(201).json({ id: reviewRef.id, ...reviewData });
+  } catch (error) {
+    console.error('Error submitting review:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
