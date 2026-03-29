@@ -127,11 +127,35 @@ app.post('/api/users', authenticate, async (req, res) => {
 
 app.post('/api/orders', authenticate, async (req, res) => {
   try {
-    const { items, shipping, total, paymentMethod, paymentId } = req.body;
+    const { items, shipping, total, paymentMethod, paymentId, couponCode } = req.body;
+    
+    // SERVER-SIDE TOTAL RE-CALCULATION (Security)
+    let subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    let discount = 0;
+
+    if (couponCode) {
+      const couponSnap = await db.collection('coupons').where('code', '==', couponCode.toUpperCase()).get();
+      if (!couponSnap.empty) {
+        const coupon = couponSnap.docs[0].data();
+        const now = admin.firestore.Timestamp.now();
+        if (coupon.active && (!coupon.expiresAt || coupon.expiresAt.toDate() > now.toDate()) && subtotal >= (coupon.minAmount || 0)) {
+          if (coupon.type === 'percent') discount = subtotal * (coupon.value / 100);
+          else if (coupon.type === 'fixed') discount = Math.min(coupon.value, subtotal);
+        }
+      }
+    }
+
+    const shippingCost = subtotal > 150 ? 0 : 12.99;
+    const finalTotal = (subtotal - discount + shippingCost).toFixed(2);
+
     const orderData = {
       items,
       shipping,
-      total,
+      total: finalTotal,
+      subtotal: subtotal.toFixed(2),
+      discount: discount.toFixed(2),
+      shippingCost,
+      couponCode: couponCode || null,
       paymentMethod,
       paymentId: paymentId || null,
       status: paymentMethod === 'card' ? 'paid' : 'pending',
@@ -143,6 +167,91 @@ app.post('/api/orders', authenticate, async (req, res) => {
     res.status(201).send({ id: docRef.id });
   } catch (error) {
     console.error('Error creating order:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Coupon Validation
+app.post('/api/coupons/validate', authenticate, async (req, res) => {
+  try {
+    const { code, subtotal } = req.body;
+    const couponSnap = await db.collection('coupons').where('code', '==', code.toUpperCase()).get();
+    
+    if (couponSnap.empty) return res.status(404).send('Coupon not found');
+    
+    const coupon = couponSnap.docs[0].data();
+    const now = admin.firestore.Timestamp.now();
+
+    if (!coupon.active) return res.status(400).send('Coupon is inactive');
+    if (coupon.expiresAt && coupon.expiresAt.toDate() < now.toDate()) return res.status(400).send('Coupon has expired');
+    if (subtotal < (coupon.minAmount || 0)) return res.status(400).send(`Minimum order amount of $${coupon.minAmount} required`);
+
+    res.status(200).send({
+      id: couponSnap.docs[0].id,
+      code: coupon.code,
+      type: coupon.type,
+      value: coupon.value
+    });
+  } catch (error) {
+    console.error('Error validating coupon:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+// Public Active Coupons for Hero & Profile
+app.get('/api/coupons/active', async (req, res) => {
+  try {
+    const now = admin.firestore.Timestamp.now();
+    console.log('Public active coupons requested at:', now.toDate());
+    const snap = await db.collection('coupons')
+      .where('active', '==', true)
+      .get();
+    
+    // Filter by expiration date in memory (Firestore limited on multiple inequality filters)
+    const coupons = snap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(c => !c.expiresAt || c.expiresAt.toDate() > now.toDate());
+      
+    res.status(200).send(coupons);
+  } catch (error) {
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Admin Coupon Management
+app.get('/api/admin/coupons', authenticate, isAdmin, async (req, res) => {
+  try {
+    const snap = await db.collection('coupons').orderBy('createdAt', 'desc').get();
+    const coupons = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.status(200).send(coupons);
+  } catch (error) {
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.post('/api/admin/coupons', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { code, type, value, minAmount, expiresAt } = req.body;
+    const couponData = {
+      code: code.toUpperCase(),
+      type,
+      value: Number(value),
+      minAmount: Number(minAmount || 0),
+      expiresAt: (expiresAt && expiresAt !== '') ? admin.firestore.Timestamp.fromDate(new Date(expiresAt)) : null,
+      active: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    const docRef = await db.collection('coupons').add(couponData);
+    res.status(201).send({ id: docRef.id, ...couponData });
+  } catch (error) {
+    res.status(500).send('Error creating coupon');
+  }
+});
+
+app.delete('/api/admin/coupons/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    await db.collection('coupons').doc(req.params.id).delete();
+    res.status(200).send('Coupon deleted');
+  } catch (error) {
     res.status(500).send('Internal Server Error');
   }
 });
@@ -179,9 +288,47 @@ app.post('/api/payment/create-checkout-session', authenticate, async (req, res) 
       });
     }
 
+    // Handle Discount
+    const { couponCode } = req.body;
+    let discount = 0;
+    let discounts = [];
+
+    if (couponCode) {
+      const couponSnap = await db.collection('coupons').where('code', '==', couponCode.toUpperCase()).get();
+      if (!couponSnap.empty) {
+        const coupon = couponSnap.docs[0].data();
+        const now = admin.firestore.Timestamp.now();
+        
+        // Re-validate security checks
+        const isValid = coupon.active && 
+                        (!coupon.expiresAt || coupon.expiresAt.toDate() > now.toDate()) &&
+                        (subtotal >= (coupon.minAmount || 0));
+
+        if (isValid) {
+          const discountVal = coupon.type === 'percent' 
+            ? subtotal * (coupon.value / 100) 
+            : Math.min(coupon.value, subtotal);
+          
+          discount = discountVal; // Track for our database metadata
+          
+          // Create a one-time Stripe coupon for this session
+          const stripeCoupon = await stripe.coupons.create({
+            name: `Discount (${coupon.code})`,
+            percent_off: coupon.type === 'percent' ? coupon.value : undefined,
+            amount_off: coupon.type === 'fixed' ? Math.round(coupon.value * 100) : undefined,
+            currency: coupon.type === 'fixed' ? 'usd' : undefined,
+            duration: 'once',
+          });
+
+          discounts.push({ coupon: stripeCoupon.id });
+        }
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
+      discounts,
       mode: 'payment',
       success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/checkout`,
@@ -189,16 +336,8 @@ app.post('/api/payment/create-checkout-session', authenticate, async (req, res) 
         userId: req.user.uid,
         userEmail: req.user.email,
         shipping: JSON.stringify(shipping),
-        items: JSON.stringify(items.map(i => ({ 
-          id: i.id, 
-          quantity: i.quantity, 
-          name: i.name, 
-          price: i.price,
-          metadataUrl: i.metadataUrl || null,
-          image: i.image || null,
-          modelPath: i.modelPath || null,
-          type: i.type || '2d'
-        })))
+        couponCode: couponCode ? String(couponCode) : "",
+        discount: discount.toFixed(2)
       }
     });
 
@@ -237,15 +376,27 @@ app.post('/api/orders/confirm-stripe', authenticate, async (req, res) => {
 
     const metadata = session.metadata;
     const shipping = JSON.parse(metadata.shipping);
-    const itemsSummary = JSON.parse(metadata.items);
     
-    // Prioritize full items from request body (including customization) over metadata summary
-    const finalItems = req.body.items || itemsSummary;
+    // Use items from request body (which we send from localStorage in the frontend)
+    const finalItems = req.body.items || [];
+    if (finalItems.length === 0) {
+      return res.status(400).send('Missing order items');
+    }
+
+    // Recalculate component costs for database consistency
+    const subtotal_cents = finalItems.reduce((acc, item) => {
+       return acc + (Math.round(item.price * 100) * item.quantity);
+    }, 0);
+    const shipping_cents = subtotal_cents > 15000 ? 0 : 1299;
 
     const orderData = {
       items: finalItems, 
       shipping,
       total: (session.amount_total / 100).toFixed(2),
+      subtotal: (subtotal_cents / 100).toFixed(2),
+      discount: metadata.discount || "0.00",
+      couponCode: metadata.couponCode && metadata.couponCode !== "null" ? metadata.couponCode : null,
+      shippingCost: (shipping_cents / 100).toFixed(2),
       paymentMethod: 'card',
       paymentId: sessionId,
       status: 'paid',
