@@ -362,7 +362,9 @@ app.get('/api/payment/session/:sessionId', authenticate, async (req, res) => {
 app.post('/api/orders/confirm-stripe', authenticate, async (req, res) => {
   try {
     const { sessionId } = req.body;
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['payment_intent']
+    });
 
     if (session.payment_status !== 'paid') {
       return res.status(400).send('Payment not completed');
@@ -399,6 +401,7 @@ app.post('/api/orders/confirm-stripe', authenticate, async (req, res) => {
       shippingCost: (shipping_cents / 100).toFixed(2),
       paymentMethod: 'card',
       paymentId: sessionId,
+      receiptUrl: session.payment_intent?.receipt_url || null,
       status: 'paid',
       userId: req.user.uid,
       userEmail: req.user.email,
