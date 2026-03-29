@@ -4,6 +4,9 @@ import { User, Package, LogOut, Calendar, ShoppingBag, Home } from 'lucide-react
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 
+import { ReviewModal } from '@/components/profile/ReviewModal'
+import { Sparkles, MessageSquare } from 'lucide-react'
+
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const STATUS_STYLES = {
@@ -11,6 +14,7 @@ const STATUS_STYLES = {
   processing: 'bg-blue-500/10 text-blue-500',
   shipped:    'bg-purple-500/10 text-purple-500',
   delivered:  'bg-green-500/10 text-green-500',
+  paid:       'bg-green-500/10 text-green-500',
   default:    'bg-primary/10 text-primary',
 }
 
@@ -19,22 +23,30 @@ export default function ProfilePage() {
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  
+  // Review Modal State
+  const [reviewModal, setReviewModal] = useState({
+    isOpen: false,
+    product: null,
+    orderId: null
+  })
+
+  const fetchOrders = async () => {
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API}/api/orders/my`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) setOrders(await res.json())
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!user) { navigate('/auth/login'); return }
-    const fetchOrders = async () => {
-      try {
-        const token = await getToken()
-        const res = await fetch(`${API}/api/orders/my`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (res.ok) setOrders(await res.json())
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchOrders()
   }, [user, navigate, getToken])
 
@@ -133,16 +145,45 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Items */}
-                  <div className="mb-4 space-y-2 border-t border-border pt-4">
+                  <div className="mb-4 space-y-4 border-t border-border pt-4">
                     {(order.items || []).map((item, i) => (
-                      <div key={i} className="flex items-center justify-between text-sm">
-                        <span className="text-foreground">
-                          {item.name}
-                          <span className="ml-1 text-muted-foreground">×{item.quantity}</span>
-                        </span>
-                        <span className="text-muted-foreground">
-                          ${((item.price || 0) * item.quantity).toFixed(2)}
-                        </span>
+                      <div key={i} className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-3">
+                            {item.image && (
+                              <img src={item.image} alt={item.name} className="h-10 w-10 rounded-md object-cover border border-border" />
+                            )}
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">
+                                {item.name}
+                                <span className="ml-1 text-muted-foreground text-xs font-normal">×{item.quantity}</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground font-mono">ID: {(item.productId || item.id || '').split('-')[0]}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-3">
+                            <span className="text-muted-foreground font-medium">
+                              ${((item.price || 0) * item.quantity).toFixed(2)}
+                            </span>
+                            
+                            {(status === 'paid' || status === 'delivered') && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-8 gap-2 border-primary/20 hover:border-primary/50 text-[10px] font-bold uppercase tracking-wider"
+                                onClick={() => setReviewModal({
+                                  isOpen: true,
+                                  product: item,
+                                  orderId: order.id
+                                })}
+                              >
+                                <MessageSquare className="h-3 w-3" />
+                                Review
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -162,7 +203,7 @@ export default function ProfilePage() {
                   )}
 
                   {/* Total */}
-                  <div className="flex justify-end text-sm font-semibold text-foreground">
+                  <div className="flex justify-end text-sm font-semibold text-foreground border-t border-border pt-3">
                     Total: ${parseFloat(order.total || 0).toFixed(2)}
                   </div>
                 </div>
@@ -171,6 +212,19 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {/* Review Modal */}
+      {reviewModal.isOpen && (
+        <ReviewModal
+          isOpen={reviewModal.isOpen}
+          onClose={() => setReviewModal({ ...reviewModal, isOpen: false })}
+          product={reviewModal.product}
+          orderId={reviewModal.orderId}
+          onReviewSuccess={() => {
+            // Optional: fetch orders again or update a local 'reviewed' map
+          }}
+        />
+      )}
     </div>
   )
 }
