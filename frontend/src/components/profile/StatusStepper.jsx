@@ -1,6 +1,7 @@
-import { CheckCircle2, CreditCard, Package, Palette, Truck, Star } from 'lucide-react'
+import { CheckCircle2, CreditCard, Package, Palette, Truck, Clock } from 'lucide-react'
 
 const STAGES = [
+  { id: 'pending', label: 'Pending', icon: Clock },
   { id: 'paid', label: 'Paid', icon: CreditCard },
   { id: 'received', label: 'Received', icon: Package },
   { id: 'processing', label: 'In Progress', icon: Palette },
@@ -8,9 +9,25 @@ const STAGES = [
   { id: 'delivered', label: 'Done', icon: CheckCircle2 },
 ]
 
-export function StatusStepper({ currentStatus }) {
-  const currentIndex = STAGES.findIndex(s => s.id === currentStatus)
+export function StatusStepper({ currentStatus, paymentMethod }) {
+  // Conditionally hide "Paid" for ramburs (COD) orders
+  const filteredStages = STAGES.filter(stage => {
+    if (paymentMethod === 'ramburs' && stage.id === 'paid') return false
+    return true
+  })
+
+  let currentIndex = filteredStages.findIndex(s => s.id === currentStatus)
   
+  // If status is not in the filtered list (e.g., "paid" for ramburs), 
+  // find the closest preceding status to show progress
+  if (currentIndex === -1) {
+    const fullIndex = STAGES.findIndex(s => s.id === currentStatus)
+    for (let i = fullIndex - 1; i >= 0; i--) {
+      currentIndex = filteredStages.findIndex(s => s.id === STAGES[i].id)
+      if (currentIndex !== -1) break
+    }
+  }
+
   return (
     <div className="w-full py-6 px-2">
       <div className="relative flex items-center justify-between">
@@ -18,11 +35,11 @@ export function StatusStepper({ currentStatus }) {
         <div className="absolute left-0 top-1/2 h-0.5 w-full -translate-y-1/2 bg-muted-foreground/20" />
         <div 
           className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-primary transition-all duration-500 ease-in-out" 
-          style={{ width: `${(currentIndex / (STAGES.length - 1)) * 100}%` }}
+          style={{ width: `${(currentIndex / (filteredStages.length - 1)) * 100}%` }}
         />
 
         {/* Nodes */}
-        {STAGES.map((stage, i) => {
+        {filteredStages.map((stage, i) => {
           const Icon = stage.icon
           const isCompleted = i < currentIndex
           const isCurrent = i === currentIndex

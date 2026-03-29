@@ -455,7 +455,7 @@ export default function AdminPage() {
                                           state={{
                                             productId: item.productId,
                                             productPayload: { 
-                                              ...item, 
+                                              ...(products.find(p => p.id === item.productId) || item), 
                                               type: (item.type || (item.customization?.decals3D?.length > 0 ? '3d' : '2d'))
                                             },
                                             customization: item.customization,
@@ -510,15 +510,17 @@ export default function AdminPage() {
                         </td>
                         <td className="px-6 py-4">
                           <select
-                            value={order.status || 'paid'}
+                            value={order.status || 'pending'}
                             onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
                             className={`rounded-lg border border-border bg-background px-2 py-1 text-xs font-bold transition-all focus:ring-2 focus:ring-primary/20 outline-none
                               ${order.status === 'delivered' ? 'text-green-500 border-green-500/20 bg-green-500/5' : 
                                 order.status === 'shipped' ? 'text-purple-500 border-purple-500/20 bg-purple-500/5' :
                                 order.status === 'processing' ? 'text-blue-500 border-blue-500/20 bg-blue-500/5' :
                                 order.status === 'received' ? 'text-yellow-500 border-yellow-500/20 bg-yellow-500/5' :
+                                order.status === 'pending' ? 'text-amber-500 border-amber-500/20 bg-amber-500/5' :
                                 'text-primary'}`}
                           >
+                            <option value="pending">Pending</option>
                             <option value="paid">Paid</option>
                             <option value="received">Received</option>
                             <option value="processing">In Progress</option>

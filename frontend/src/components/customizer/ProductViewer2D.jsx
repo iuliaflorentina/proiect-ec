@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Stage, Layer, Image as KonvaImage, Transformer } from 'react-konva'
 import useImage from 'use-image'
+import Konva from 'konva'
 
 const Sticker = ({ shape, isSelected, onSelect, onChange }) => {
     const [image] = useImage(shape.src, 'Anonymous')
@@ -14,6 +15,25 @@ const Sticker = ({ shape, isSelected, onSelect, onChange }) => {
         }
     }, [isSelected])
 
+    // Convert hex to RGB for Konva filter
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '#ffffff')
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : { r: 255, g: 255, b: 255 }
+    }
+
+    const color = hexToRgb(shape.color)
+
+    // Re-cache when image or color changes for filter performance
+    useEffect(() => {
+        if (image && shapeRef.current) {
+            shapeRef.current.cache()
+        }
+    }, [image, shape.color])
+
     return (
         <>
             <KonvaImage
@@ -22,7 +42,10 @@ const Sticker = ({ shape, isSelected, onSelect, onChange }) => {
                 onTap={onSelect}
                 ref={shapeRef}
                 {...shape}
-                globalCompositeOperation="multiply"
+                filters={[Konva.Filters.RGB]}
+                red={color.r}
+                green={color.g}
+                blue={color.b}
                 draggable
                 onDragEnd={(e) => {
                     onChange({

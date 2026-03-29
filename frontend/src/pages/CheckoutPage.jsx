@@ -4,6 +4,9 @@ import { CheckCircle, ChevronRight, Lock, ArrowRight, Home, CreditCard, Shopping
 import { Button } from '../components/ui/Button'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { storage } from '@/lib/firebase'
+import { getAsset } from '@/lib/db'
 
 
 const STEPS = ['Shipping', 'Payment', 'Confirm']
@@ -35,6 +38,54 @@ export default function CheckoutPage() {
     setOrderError('')
     try {
       const token = await getToken()
+      
+      // SYNC UPLOAD: Convert all local: IndexedDB designs to Firebase URLs
+      const processedItems = await Promise.all(items.map(async (item) => {
+        if (!item.customization) return item;
+        
+        const nextCustomization = JSON.parse(JSON.stringify(item.customization));
+        const replacements = {};
+        
+        // Find all local: URLs
+        const localSources = new Set();
+        if (nextCustomization.decals3D) {
+          nextCustomization.decals3D.forEach(d => { if (d.imageUrl?.startsWith('local:')) localSources.add(d.imageUrl); });
+        }
+        if (nextCustomization.stickers) {
+          Object.values(nextCustomization.stickers).forEach(viewStickers => {
+             viewStickers.forEach(s => { if (s.src?.startsWith('local:')) localSources.add(s.src); });
+          });
+        }
+        
+        // Upload them
+        for (const source of localSources) {
+          const id = source.replace('local:', '');
+          const blob = await getAsset(id);
+          if (blob) {
+            const stickerId = `order-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const stickerRef = ref(storage, `stickers/${stickerId}`);
+            await uploadBytes(stickerRef, blob);
+            replacements[source] = await getDownloadURL(stickerRef);
+          }
+        }
+        
+        // Apply replacements
+        if (nextCustomization.decals3D) {
+          nextCustomization.decals3D = nextCustomization.decals3D.map(d => ({
+            ...d, imageUrl: replacements[d.imageUrl] || d.imageUrl
+          }));
+        }
+        if (nextCustomization.stickers) {
+          Object.keys(nextCustomization.stickers).forEach(view => {
+            nextCustomization.stickers[view] = nextCustomization.stickers[view].map(s => ({
+              ...s, src: replacements[s.src] || s.src
+            }));
+          });
+        }
+        
+        return { ...item, customization: nextCustomization };
+      }));
+
       const totalAmount = (subtotal + (subtotal > 150 ? 0 : 12.99)).toFixed(2)
       
       const shipping = {
@@ -56,7 +107,7 @@ export default function CheckoutPage() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            items,
+            items: processedItems,
             shipping,
             total: totalAmount,
           }),
@@ -66,7 +117,7 @@ export default function CheckoutPage() {
         const { url } = await res.json()
         
         // Bridge customization data to success page via localStorage
-        localStorage.setItem('pending_stripe_items', JSON.stringify(items));
+        localStorage.setItem('pending_stripe_items', JSON.stringify(processedItems));
         
         window.location.href = url
         return
@@ -80,7 +131,7 @@ export default function CheckoutPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          items: items.map(({ id, productId, name, price, quantity, customization, designId, modelUrl, metadataUrl }) => ({ 
+          items: processedItems.map(({ id, productId, name, price, quantity, customization, designId, modelUrl, metadataUrl }) => ({ 
             id, 
             productId, 
             name, 

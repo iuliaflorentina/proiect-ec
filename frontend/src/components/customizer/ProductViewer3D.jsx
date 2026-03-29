@@ -114,9 +114,19 @@ function Model({ product, currentColor, decals, activeSticker, selectedId, setSe
 
                 const tex = textureLoader.load(decal.imageUrl)
                 tex.colorSpace = THREE.SRGBColorSpace
+                
+                // Maximize sharpness and quality
+                tex.minFilter = THREE.LinearMipmapLinearFilter
+                tex.magFilter = THREE.LinearFilter
+                tex.anisotropy = 16 
 
+                // Correct Mirroring (Horizontal)
+                tex.flipY = true 
+                tex.repeat.set(-1, 1)
+                tex.offset.set(1, 0)
                 const decalMat = new THREE.MeshStandardMaterial({
                     map: tex,
+                    color: new THREE.Color(decal.color || '#ffffff'),
                     transparent: true,
                     depthTest: true,
                     depthWrite: false,

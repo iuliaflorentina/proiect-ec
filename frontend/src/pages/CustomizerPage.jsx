@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-    ChevronLeft, Image as ImageIcon, Download, ShoppingCart, Trash2, Sparkles, ArrowRight, Upload, Layers, MoveUp, MoveDown, Copy, Settings2, Loader2, LayoutDashboard
+    ChevronLeft, Image as ImageIcon, Download, ShoppingCart, Trash2, Sparkles, ArrowRight, Upload, Layers, MoveUp, MoveDown, Copy, Settings2, Loader2, LayoutDashboard, Search
 } from 'lucide-react'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '@/lib/firebase'
 import { compressImage } from '@/lib/optimize'
+import { saveAsset, getAsset } from '@/lib/db' 
 import { Button } from '@/components/ui/button'
 import { useCart } from '@/context/CartContext'
 import { useAuth } from '@/context/AuthContext'
@@ -22,6 +23,10 @@ const STICKERS = [
 ]
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
+const DEFAULT_COLORS = [
+    '#ffffff', '#000000', '#f43f5e', '#ec4899', '#8b5cf6', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#fbbf24'
+]
 
 const CustomizerPage = () => {
     const { addItem } = useCart()
@@ -48,10 +53,18 @@ const CustomizerPage = () => {
                 const data = await res.json()
                 setProducts(data)
                 
-                // If we only had a productId but no payload, find it now
-                if (!selectedProduct && location.state?.productId) {
-                    const found = data.find(p => p.id === location.state.productId)
-                    if (found) setSelectedProduct(found)
+                // If we only had a productId but no payload, OR if the current payload is incomplete (missing modelPath)
+                const currentId = selectedProduct?.productId || selectedProduct?.id || location.state?.productId
+                if (currentId) {
+                    const found = data.find(p => p.id === currentId)
+                    if (found) {
+                        // Merge the items: local customizations win, but full product meta-data (like modelPath) is added
+                        setSelectedProduct(prev => ({ 
+                            ...found, 
+                            ...prev, 
+                            modelPath: found.modelPath // Force the correct model path!
+                        }))
+                    }
                 }
             }
         } catch (error) {
@@ -87,8 +100,66 @@ const CustomizerPage = () => {
     })
 
     const [isSaving, setIsSaving] = useState(false)
+    const [resolvedUrls, setResolvedUrls] = useState({}) // { 'local:id': 'blob:...' }
     const isReadOnly = location.state?.readOnly === true
     const viewerRef = useRef()
+
+    const [iconSearch, setIconSearch] = useState('')
+    const [iconResults, setIconResults] = useState([])
+    const [isSearchingIcons, setIsSearchingIcons] = useState(false)
+
+    useEffect(() => {
+        if (!iconSearch || iconSearch.length < 2) {
+            setIconResults([])
+            return
+        }
+
+        const timeoutId = setTimeout(async () => {
+            setIsSearchingIcons(true)
+            try {
+                const res = await fetch(`https://api.iconify.design/search?query=${encodeURIComponent(iconSearch)}&limit=32`)
+                if (res.ok) {
+                    const data = await res.json()
+                    // Map to full SVG URLs through our proxy
+                    const icons = (data.icons || []).map(icon => {
+                        const [prefix, name] = icon.split(':')
+                        // Request a higher resolution (512px height) and white color so we can tint it later!
+                        const url = `https://api.iconify.design/${prefix}/${name}.svg?height=512&color=white`
+                        return {
+                            id: icon,
+                            src: url
+                        }
+                    })
+                    setIconResults(icons)
+                }
+            } catch (err) {
+                console.error('Error searching icons:', err)
+            } finally {
+                setIsSearchingIcons(false)
+            }
+        }, 500)
+
+        return () => clearTimeout(timeoutId)
+    }, [iconSearch])
+
+    useEffect(() => {
+        if (selectedId && selectedColor) {
+            if (selectedProduct.type === '3d') {
+                setDecals3D(prev => prev.map(d => d.id === selectedId ? { ...d, color: selectedColor } : d))
+            } else {
+                setStickers(prev => {
+                    const current = prev[activeView] || []
+                    if (current.some(s => s.id === selectedId)) {
+                        return { 
+                            ...prev, 
+                            [activeView]: current.map(s => s.id === selectedId ? { ...s, color: selectedColor } : s)
+                        }
+                    }
+                    return prev
+                })
+            }
+        }
+    }, [selectedColor, selectedId])
 
     const currentStickers = stickers[activeView] || []
 
@@ -115,7 +186,8 @@ const CustomizerPage = () => {
             y: 200,
             width: 150,
             height: 150,
-            rotation: 0
+            rotation: 0,
+            color: selectedColor
         }
         setCurrentStickers([...currentStickers, newSticker])
         setSelectedId(newSticker.id)
@@ -138,30 +210,68 @@ const CustomizerPage = () => {
         setSelectedId(null)
     }
 
+    // Resolve local IndexedDB assets to blob URLs
+    useEffect(() => {
+    const resolve = async () => {
+            const allSources = new Set()
+            decals3D.forEach(d => { if (d.imageUrl?.startsWith('local:')) allSources.add(d.imageUrl) })
+            Object.values(stickers).forEach(viewStickers => {
+                viewStickers.forEach(s => { if (s.src?.startsWith('local:')) allSources.add(s.src) })
+            })
+
+            const newResolved = { ...resolvedUrls }
+            let changed = false
+
+            for (const source of allSources) {
+                if (!newResolved[source]) {
+                    const id = source.replace('local:', '')
+                    const blob = await getAsset(id)
+                    if (blob) {
+                        newResolved[source] = URL.createObjectURL(blob)
+                        changed = true
+                    }
+                }
+            }
+            if (changed) setResolvedUrls(newResolved)
+        }
+        resolve()
+    }, [decals3D, stickers])
+
+    const getDisplayUrl = (url) => {
+        if (!url) return url
+        if (resolvedUrls[url]) return resolvedUrls[url]
+        
+        // Use proxy for Firebase storage to bypass CORS in 3D viewers (essential for Admin)
+        if (url.includes('firebasestorage.googleapis.com')) {
+            return `${API}/api/proxy?url=${encodeURIComponent(url)}`
+        }
+        
+        return url
+    }
+
     const handleFileUpload = async (e) => {
         const file = e.target.files[0]
         if (!file) return
 
         setIsSaving(true)
         try {
-            // Compress and convert to WebP before upload
+            // 1. Compress and convert to WebP
             const optimizedFile = await compressImage(file, { maxWidth: 512, quality: 0.7 });
             
-            // Upload to Firebase to keep localStorage size tiny and URLs permanent
-            const stickerId = `custom-sticker-${Date.now()}`
-            const stickerRef = ref(storage, `stickers/${stickerId}`)
-            const snapshot = await uploadBytes(stickerRef, optimizedFile)
-            const uploadedSrc = await getDownloadURL(snapshot.ref)
+            // 2. Save to IndexedDB (Instant, Offline, Persistent)
+            const assetId = `design-${Date.now()}`
+            await saveAsset(assetId, optimizedFile)
+            const localSource = `local:${assetId}`
 
             if (selectedProduct?.type === '3d') {
-                setActiveSticker({ src: uploadedSrc, id: 'uploaded' })
-                setSelectedId(null) // clear selection so they can place it
+                setActiveSticker({ src: localSource, id: 'uploaded' })
+                setSelectedId(null)
             } else {
-                handleAddSticker2D(uploadedSrc)
+                handleAddSticker2D(localSource)
             }
         } catch (error) {
-            console.error("Image upload failed:", error)
-            alert("Failed to upload image. Please try again.")
+            console.error("Local save failed:", error)
+            alert("Failed to save image locally. Please try again.")
         } finally {
             setIsSaving(false)
             e.target.value = ''
@@ -171,8 +281,6 @@ const CustomizerPage = () => {
     const handleAddToCart = async () => {
         if (!selectedProduct) return
         
-        // Save the configuration to local storage/cart context. 
-        // 3D files will be exported to Firebase only when placing the final order.
         const designId = `${selectedProduct.id}-${Date.now()}`
         
         if (selectedProduct.type === '3d') {
@@ -400,8 +508,8 @@ const CustomizerPage = () => {
                             ref={viewerRef}
                             product={selectedProduct}
                             currentColor={selectedColor}
-                            decals={decals3D}
-                            activeSticker={activeSticker}
+                            decals={decals3D.map(d => ({ ...d, imageUrl: getDisplayUrl(d.imageUrl) }))}
+                            activeSticker={activeSticker ? { ...activeSticker, src: getDisplayUrl(activeSticker.src) } : null}
                             selectedId={selectedId}
                             setSelectedId={setSelectedId}
                             onAddDecal={handleAddDecal3D}
@@ -413,7 +521,7 @@ const CustomizerPage = () => {
                         <ProductViewer2D
                             product={selectedProduct}
                             frontOrBack={activeView}
-                            stickers={currentStickers}
+                            stickers={currentStickers.map(s => ({ ...s, src: getDisplayUrl(s.src) }))}
                             setStickers={setCurrentStickers}
                             selectedId={selectedId}
                             setSelectedId={setSelectedId}
@@ -460,21 +568,20 @@ const CustomizerPage = () => {
                                     </div>
                                 </section>
 
-                                {selectedProduct.colors && (
-                                    <section>
-                                        <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Choose Color</h3>
-                                        <div className="flex gap-3">
-                                            {selectedProduct.colors.map((color) => (
-                                                <button
-                                                    key={color}
-                                                    onClick={() => setSelectedColor(color)}
-                                                    className={`w-10 h-10 rounded-full border-2 transition-all ${selectedColor === color ? 'border-primary scale-110 shadow-md ring-2 ring-primary ring-offset-2 ring-offset-background' : 'border-border/50 hover:scale-105'}`}
-                                                    style={{ backgroundColor: color }}
-                                                />
-                                            ))}
-                                        </div>
-                                    </section>
-                                )}
+                                <section>
+                                    <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Choose Color / Tint</h3>
+                                    <div className="flex flex-wrap gap-3">
+                                        {(selectedProduct.colors?.length > 0 ? selectedProduct.colors : DEFAULT_COLORS).map((color) => (
+                                            <button
+                                                key={color}
+                                                onClick={() => setSelectedColor(color)}
+                                                className={`w-8 h-8 rounded-full border-2 transition-all ${selectedColor === color ? 'border-primary scale-110 shadow-md ring-2 ring-primary ring-offset-2 ring-offset-background' : 'border-border/50 hover:scale-105'}`}
+                                                style={{ backgroundColor: color }}
+                                            />
+                                        ))}
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground mt-3 italic">Affects both Product Body & Selected Icons</p>
+                                </section>
 
                                 <section>
                                     <div className="flex items-center justify-between mb-4">
@@ -497,13 +604,29 @@ const CustomizerPage = () => {
                                             Clear All
                                         </Button>
                                     </div>
-                                    <p className="text-xs text-muted-foreground leading-relaxed mb-4">
-                                        {selectedProduct.type === '3d'
-                                            ? 'Select a decal below, then click anywhere on the 3D model to dynamically project and wrap it onto the surface.'
-                                            : 'Select an image element to add it to the customizer layer overview.'}
-                                    </p>
+
+                                    {/* Iconify Search */}
+                                    <div className="relative mb-6">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <Search className="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="Search millions of icons (e.g. music, coffee...)"
+                                            value={iconSearch}
+                                            onChange={(e) => setIconSearch(e.target.value)}
+                                            className="block w-full pl-10 pr-3 py-2 border border-border rounded-xl bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                        />
+                                        {isSearchingIcons && (
+                                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="grid grid-cols-4 gap-3">
-                                        {STICKERS.map((sticker) => {
+                                        {/* Show Search Results if any, else show Default STICKERS */}
+                                        {(iconSearch.length >= 2 ? iconResults : STICKERS).map((sticker) => {
                                             const isActive = selectedProduct.type === '3d' && activeSticker?.src === sticker.src && !selectedId
                                             return (
                                                 <button
@@ -516,12 +639,17 @@ const CustomizerPage = () => {
                                                             handleAddSticker2D(sticker.src)
                                                         }
                                                     }}
-                                                    className={`aspect-square p-3 rounded-xl border transition-all flex items-center justify-center ${isActive ? 'border-primary ring-2 ring-primary bg-primary/5' : 'border-border bg-secondary/5 hover:border-primary/50 grayscale hover:grayscale-0'}`}
+                                                    className={`aspect-square p-2 rounded-xl border transition-all flex items-center justify-center ${isActive ? 'border-primary ring-2 ring-primary bg-primary/5' : 'border-border bg-secondary/5 hover:border-primary/50 grayscale hover:grayscale-0'}`}
                                                 >
-                                                    <img src={sticker.src} alt={sticker.id} className="w-full h-full object-contain" />
+                                                    <img src={getDisplayUrl(sticker.src)} alt={sticker.id} className="w-full h-full object-contain" />
                                                 </button>
                                             )
                                         })}
+                                        {iconSearch.length >= 2 && iconResults.length === 0 && !isSearchingIcons && (
+                                            <div className="col-span-4 py-8 text-center text-xs text-muted-foreground">
+                                                No results found for "{iconSearch}"
+                                            </div>
+                                        )}
                                     </div>
                                 </section>
                             </div>

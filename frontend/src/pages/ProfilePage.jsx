@@ -152,7 +152,7 @@ export default function ProfilePage() {
 
                   {/* Enhanced Status Stepper */}
                   <div className="mb-10 px-4">
-                    <StatusStepper currentStatus={status} />
+                    <StatusStepper currentStatus={status} paymentMethod={order.paymentMethod} />
                   </div>
 
                   {/* Items */}
