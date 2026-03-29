@@ -26,7 +26,7 @@ export function CTASection() {
                     </p>
 
                     <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-                        <Link to="/products">
+                        <Link to="/customize">
                             <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90">
                                 Start Customizing
                                 <ArrowRight className="ml-2 h-4 w-4" />

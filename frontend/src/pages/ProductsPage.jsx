@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Star, ShoppingCart, SlidersHorizontal, X, Search, Edit2 } from 'lucide-react'
+import { Star, ShoppingCart, SlidersHorizontal, X, Search, Edit2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useCart } from '@/context/CartContext'
@@ -11,7 +11,7 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 const CATEGORIES = ['All', 'sneakers', 'hoodies', 'jackets', 'tees']
 
 export default function ProductsPage() {
-    const { isAdmin } = useAuth()
+    const { isAdmin, getToken } = useAuth()
     const [products, setProducts] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -84,6 +84,26 @@ export default function ProductsPage() {
         addItem(product)
         setAdded((prev) => ({ ...prev, [product.id]: true }))
         setTimeout(() => setAdded((prev) => ({ ...prev, [product.id]: false })), 1500)
+    }
+
+    const handleDeleteProduct = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this product? This action cannot be undone.')) return
+        
+        try {
+            const token = await getToken()
+            const res = await fetch(`${API}/api/products/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            if (res.ok) {
+                setProducts(prev => prev.filter(p => p.id !== id))
+            } else {
+                throw new Error('Failed to delete product')
+            }
+        } catch (error) {
+            console.error('Error deleting product:', error)
+            alert('Failed to delete product')
+        }
     }
 
     return (
@@ -174,20 +194,22 @@ export default function ProductsPage() {
                             <h3 className="mt-1 font-semibold text-foreground leading-snug">{product.name}</h3>
 
                             {/* Rating */}
-                            <div className="mt-2 flex items-center gap-1.5">
-                                <div className="flex gap-0.5">
-                                    {Array.from({ length: 5 }).map((_, i) => (
-                                        <Star
-                                            key={i}
-                                            className={`h-3 w-3 ${i < Math.floor(product.rating)
-                                                ? 'fill-primary text-primary'
-                                                : 'fill-muted text-muted'
-                                                }`}
-                                        />
-                                    ))}
+                            {product.type !== '3d' && (
+                                <div className="mt-2 flex items-center gap-1.5">
+                                    <div className="flex gap-0.5">
+                                        {Array.from({ length: 5 }).map((_, i) => (
+                                            <Star
+                                                key={i}
+                                                className={`h-3 w-3 ${i < Math.floor(product.rating)
+                                                    ? 'fill-primary text-primary'
+                                                    : 'fill-muted text-muted'
+                                                    }`}
+                                            />
+                                        ))}
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">({product.reviews})</span>
                                 </div>
-                                <span className="text-xs text-muted-foreground">({product.reviews})</span>
-                            </div>
+                            )}
 
                             {/* Price & Add */}
                             <div className="mt-auto flex items-center justify-between pt-4">
@@ -212,6 +234,14 @@ export default function ProductsPage() {
                                             >
                                                 <Edit2 className="h-3.5 w-3.5" />
                                                 Edit
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-9 w-9 text-destructive hover:bg-destructive/10"
+                                                onClick={() => handleDeleteProduct(product.id)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
                                             </Button>
                                             <Link to="/customize" state={{ productId: product.id, productPayload: product, readOnly: true }}>
                                                 <Button className="h-9 px-3 text-xs font-semibold">

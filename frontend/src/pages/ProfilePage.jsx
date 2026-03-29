@@ -5,17 +5,26 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 
 import { ReviewModal } from '@/components/profile/ReviewModal'
+import { StatusStepper } from '@/components/profile/StatusStepper'
 import { Sparkles, MessageSquare } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 const STATUS_STYLES = {
-  pending:    'bg-yellow-500/10 text-yellow-500',
+  received:   'bg-yellow-500/10 text-yellow-500',
   processing: 'bg-blue-500/10 text-blue-500',
   shipped:    'bg-purple-500/10 text-purple-500',
   delivered:  'bg-green-500/10 text-green-500',
   paid:       'bg-green-500/10 text-green-500',
   default:    'bg-primary/10 text-primary',
+}
+
+const STATUS_LABELS = {
+  paid:       'Paid',
+  received:   'Received',
+  processing: 'In Progress',
+  shipped:    'On its way',
+  delivered:  'Done',
 }
 
 export default function ProfilePage() {
@@ -134,14 +143,16 @@ export default function ProfilePage() {
                       <span className="font-mono text-xs text-muted-foreground">
                         #{order.id.slice(0, 8).toUpperCase()}
                       </span>
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusCls}`}>
-                        {status}
-                      </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Calendar className="h-3.5 w-3.5" />
                       {date}
                     </div>
+                  </div>
+
+                  {/* Enhanced Status Stepper */}
+                  <div className="mb-10 px-4">
+                    <StatusStepper currentStatus={status} />
                   </div>
 
                   {/* Items */}
@@ -167,7 +178,7 @@ export default function ProfilePage() {
                               ${((item.price || 0) * item.quantity).toFixed(2)}
                             </span>
                             
-                            {(status === 'paid' || status === 'delivered') && (
+                            {status === 'delivered' && (
                               <Button 
                                 variant="outline" 
                                 size="sm" 

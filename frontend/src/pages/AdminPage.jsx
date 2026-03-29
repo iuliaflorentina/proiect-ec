@@ -1,8 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette, Home } from 'lucide-react'
+import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette, Home, Star, ShoppingCart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/context/AuthContext'
+import { useCart } from '@/context/CartContext'
 import { GalleryItemModal } from '@/components/admin/GalleryItemModal'
 
 import { gallerySeedData, productSeedData } from '@/lib/seeds'
@@ -22,6 +24,19 @@ export default function AdminPage() {
   const [isSeedingGallery, setIsSeedingGallery] = useState(false)
   const [selectedGalleryItem, setSelectedGalleryItem] = useState(null)
   const [isGalleryModalOpen, setIsGalleryModalOpen] = useState(false)
+
+  // Search and Filter State
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [dateFilter, setDateFilter] = useState('')
+  const { addItem } = useCart()
+  const [added, setAdded] = useState({})
+
+  const handleAdd = (product) => {
+    addItem(product)
+    setAdded((prev) => ({ ...prev, [product.id]: true }))
+    setTimeout(() => setAdded((prev) => ({ ...prev, [product.id]: false })), 1500)
+  }
 
   const seedGallery = async () => {
     setIsSeedingGallery(true)
@@ -140,6 +155,74 @@ export default function AdminPage() {
     }
   }
 
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this product? This action cannot be undone.')) return
+    
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API}/api/products/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setProducts(prev => prev.filter(p => p.id !== id))
+        alert('Product deleted successfully')
+      } else {
+        throw new Error('Failed to delete product')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleStatusUpdate = async (orderId, newStatus) => {
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API}/api/admin/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      })
+      if (res.ok) {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o))
+      } else {
+        throw new Error('Failed to update status')
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  // Derived filtered data
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      const searchLower = searchTerm.toLowerCase()
+      const matchesSearch = 
+        order.id.toLowerCase().includes(searchLower) ||
+        order.userEmail?.toLowerCase().includes(searchLower) ||
+        `${order.shipping?.firstName} ${order.shipping?.lastName}`.toLowerCase().includes(searchLower)
+      
+      const matchesStatus = statusFilter === 'all' || order.status === statusFilter
+
+      let matchesDate = true
+      if (dateFilter && order.createdAt) {
+        const orderDate = (function() {
+          const s = order.createdAt._seconds ?? order.createdAt.seconds
+          if (s !== undefined) return new Date(s * 1000)
+          return new Date(order.createdAt)
+        })()
+        // Format YYYY-MM-DD for comparison
+        const formattedOrderDate = orderDate.toISOString().split('T')[0]
+        matchesDate = formattedOrderDate === dateFilter
+      }
+
+      return matchesSearch && matchesStatus && matchesDate
+    })
+  }, [orders, searchTerm, statusFilter, dateFilter])
+
   const mostOrderedProduct = useMemo(() => {
     if (!orders || orders.length === 0) return 'None'
     const counts = {}
@@ -171,11 +254,11 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-10 lg:px-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Admin Dashboard</h1>
-          <p className="mt-1 text-muted-foreground">All orders placed on the platform</p>
+          <p className="mt-1 text-muted-foreground">Manage your business operations</p>
         </div>
         <div className="flex gap-2">
           <Button 
@@ -267,14 +350,59 @@ export default function AdminPage() {
         >
           Gallery Management
         </button>
+        <button
+          onClick={() => setActiveTab('products')}
+          className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === 'products' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Product Management
+        </button>
       </div>
 
       {activeTab === 'orders' ? (
-        <>
-          {orders.length === 0 ? (
+        <div className="space-y-6">
+          {/* Controls Bar */}
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-card p-4 border border-border rounded-xl">
+             <div className="relative flex-1 max-w-2xl">
+                <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input 
+                  type="text"
+                  placeholder="Search by email, name or Order ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                />
+             </div>
+             <div className="flex flex-wrap gap-2">
+                <input 
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground"
+                />
+                <select 
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-background border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium text-foreground"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="paid">Paid</option>
+                  <option value="received">Received</option>
+                  <option value="processing">In Progress</option>
+                  <option value="shipped">On its way</option>
+                  <option value="delivered">Done</option>
+                </select>
+                {(searchTerm || statusFilter !== 'all' || dateFilter) && (
+                  <Button variant="ghost" size="sm" onClick={() => { setSearchTerm(''); setStatusFilter('all'); setDateFilter(''); }}>
+                    Clear
+                  </Button>
+                )}
+             </div>
+          </div>
+
+          {filteredOrders.length === 0 ? (
             <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
-              <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No orders yet.</p>
+              <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-20" />
+              <p className="text-muted-foreground">No orders found matching your criteria.</p>
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
@@ -287,11 +415,12 @@ export default function AdminPage() {
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Shipping</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Items</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Total</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Status</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {orders.map((order) => (
+                    {filteredOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-muted/20 transition-colors">
                         <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
                           {order.id.slice(0, 8)}...
@@ -314,23 +443,8 @@ export default function AdminPage() {
                         </td>
                         <td className="px-6 py-4 outline-none">
                           <div className="space-y-4">
-                            {(order.items || []).map((item, i) => (
+                             {(order.items || []).map((item, i) => (
                               <div key={i} className="flex items-start gap-4 border-b border-border/30 last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
-                                {/* Design Preview Thumbnail */}
-                                <div className="h-16 w-16 overflow-hidden rounded-lg border border-border bg-muted shrink-0 shadow-sm transition-transform hover:scale-110">
-                                   {item.metadataUrl || item.image ? (
-                                      <img 
-                                        src={item.metadataUrl || item.image} 
-                                        alt={item.name} 
-                                        className="h-full w-full object-cover" 
-                                      />
-                                   ) : (
-                                      <div className="flex h-full w-full items-center justify-center">
-                                        <ImageIcon className="h-6 w-6 text-muted-foreground/40" />
-                                      </div>
-                                   )}
-                                </div>
-
                                 <div className="flex-1 space-y-1">
                                   <div className="flex items-center justify-between gap-4">
                                     <span className="font-bold text-foreground text-sm uppercase tracking-tight">{item.name} ×{item.quantity}</span>
@@ -394,6 +508,24 @@ export default function AdminPage() {
                         <td className="px-6 py-4 font-semibold text-foreground">
                           ${parseFloat(order.total || 0).toFixed(2)}
                         </td>
+                        <td className="px-6 py-4">
+                          <select
+                            value={order.status || 'paid'}
+                            onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
+                            className={`rounded-lg border border-border bg-background px-2 py-1 text-xs font-bold transition-all focus:ring-2 focus:ring-primary/20 outline-none
+                              ${order.status === 'delivered' ? 'text-green-500 border-green-500/20 bg-green-500/5' : 
+                                order.status === 'shipped' ? 'text-purple-500 border-purple-500/20 bg-purple-500/5' :
+                                order.status === 'processing' ? 'text-blue-500 border-blue-500/20 bg-blue-500/5' :
+                                order.status === 'received' ? 'text-yellow-500 border-yellow-500/20 bg-yellow-500/5' :
+                                'text-primary'}`}
+                          >
+                            <option value="paid">Paid</option>
+                            <option value="received">Received</option>
+                            <option value="processing">In Progress</option>
+                            <option value="shipped">On its way</option>
+                            <option value="delivered">Done</option>
+                          </select>
+                        </td>
                         <td className="px-6 py-4 text-muted-foreground">
                           <div className="flex items-center gap-1.5 whitespace-nowrap">
                             <Calendar className="h-3.5 w-3.5" />
@@ -413,8 +545,8 @@ export default function AdminPage() {
               </div>
             </div>
           )}
-        </>
-      ) : (
+        </div>
+      ) : activeTab === 'gallery' ? (
         <>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-bold text-foreground">Artworks in Gallery ({gallery.length})</h2>
@@ -426,77 +558,131 @@ export default function AdminPage() {
                 Add Artwork
             </Button>
           </div>
-
-          {gallery.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
-              <Palette className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-20" />
-              <p className="text-muted-foreground">The gallery is currently empty.</p>
-              <Button variant="link" onClick={seedGallery} className="mt-2 text-primary">Seed initial artworks</Button>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                      <th className="px-6 py-4 text-left font-semibold text-foreground">Artwork</th>
-                      <th className="px-6 py-4 text-left font-semibold text-foreground">Category</th>
-                      <th className="px-6 py-4 text-left font-semibold text-foreground">Featured</th>
-                      <th className="px-6 py-4 text-right font-semibold text-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {gallery.map((item) => (
-                      <tr key={item.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-4">
-                            <img src={item.image} alt={item.title} className="h-12 w-12 rounded-lg object-cover border border-border" />
-                            <div className="font-bold text-foreground">{item.title}</div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="capitalize px-2 py-1 rounded-full bg-secondary/30 text-[10px] font-bold border border-border">
-                            {item.category}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          {item.featured ? (
-                            <span className="flex items-center gap-1 text-primary font-bold text-xs uppercase tracking-widest">
-                              <Sparkles className="h-3 w-3" />
-                              Yes
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs uppercase tracking-widest">No</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => { setSelectedGalleryItem(item); setIsGalleryModalOpen(true); }}
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-secondary/20"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => handleDeleteGalleryItem(item.id)}
-                                className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {/* ... existing gallery table logic ... */}
+          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+             <div className="overflow-x-auto">
+               <table className="w-full text-sm">
+                 <thead>
+                   <tr className="border-b border-border bg-muted/40">
+                     <th className="px-6 py-4 text-left font-semibold text-foreground">Artwork</th>
+                     <th className="px-6 py-4 text-left font-semibold text-foreground">Category</th>
+                     <th className="px-6 py-4 text-left font-semibold text-foreground">Featured</th>
+                     <th className="px-6 py-4 text-right font-semibold text-foreground">Actions</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-border">
+                   {gallery.map((item) => (
+                     <tr key={item.id} className="hover:bg-muted/20 transition-colors">
+                       <td className="px-6 py-4">
+                         <div className="flex items-center gap-4">
+                           <img src={item.image} alt={item.title} className="h-12 w-12 rounded-lg object-cover border border-border" />
+                           <div className="font-bold text-foreground">{item.title}</div>
+                         </div>
+                       </td>
+                       <td className="px-6 py-4">
+                         <span className="capitalize px-2 py-1 rounded-full bg-secondary/30 text-[10px] font-bold border border-border">
+                           {item.category}
+                         </span>
+                       </td>
+                       <td className="px-6 py-4">
+                         {item.featured ? (
+                           <span className="flex items-center gap-1 text-primary font-bold text-xs uppercase tracking-widest">
+                             <Sparkles className="h-3 w-3" />
+                             Yes
+                           </span>
+                         ) : (
+                           <span className="text-muted-foreground text-xs uppercase tracking-widest">No</span>
+                         )}
+                       </td>
+                       <td className="px-6 py-4 text-right">
+                         <div className="flex justify-end gap-2">
+                           <Button 
+                               variant="ghost" 
+                               size="icon" 
+                               onClick={() => { setSelectedGalleryItem(item); setIsGalleryModalOpen(true); }}
+                               className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-secondary/20"
+                           >
+                             <Edit className="h-4 w-4" />
+                           </Button>
+                           <Button 
+                               variant="ghost" 
+                               size="icon" 
+                               onClick={() => handleDeleteGalleryItem(item.id)}
+                               className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
+                         </div>
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+           </div>
         </>
+      ) : (
+        <div className="space-y-6">
+           <div className="flex items-center justify-between">
+              <div>
+                 <h2 className="text-xl font-bold text-foreground">Product Inventory ({products.length})</h2>
+                 <p className="text-sm text-muted-foreground">Manage base models and shop products</p>
+              </div>
+              <Button onClick={() => navigate('/products')} className="gap-2">
+                 <Plus className="h-4 w-4" />
+                 Add Product
+              </Button>
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {products.map((product) => (
+                <div key={product.id} className="bg-card border border-border rounded-xl overflow-hidden group shadow-sm hover:shadow-md transition-all">
+                   <div className="aspect-video relative overflow-hidden bg-muted">
+                      <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <Badge className="bg-background/80 backdrop-blur-sm text-foreground border-border">{product.category}</Badge>
+                        {product.type === '3d' && <Badge className="bg-primary/80 backdrop-blur-sm text-primary-foreground border-none">3D</Badge>}
+                      </div>
+                   </div>
+                   <div className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                         <h3 className="font-bold text-foreground truncate flex-1 mr-2">{product.name}</h3>
+                         <span className="text-lg font-bold text-primary">${product.price}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
+                         <span>{product.customizable ? 'Customizable' : 'Fixed'}</span>
+                      </div>
+                      <div className="flex gap-2">
+                         <Button 
+                            variant="outline" 
+                            className="flex-1 gap-2"
+                            onClick={() => navigate('/products', { state: { productToEdit: product } })}
+                         >
+                            <Edit className="h-4 w-4" />
+                            Edit
+                         </Button>
+                         <Button
+                            size="icon"
+                            onClick={() => handleAdd(product)}
+                            className={`h-9 w-9 transition-all border border-transparent ${added[product.id] ? 'bg-green-600 hover:bg-green-600 text-white' : 'bg-primary text-primary-foreground'}
+                                `}
+                         >
+                            {added[product.id] ? '✓' : <ShoppingCart className="h-4 w-4" />}
+                         </Button>
+                         <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-9 w-9 text-destructive hover:bg-destructive/10 border border-destructive/20"
+                            onClick={() => handleDeleteProduct(product.id)}
+                         >
+                            <Trash2 className="h-4 w-4" />
+                         </Button>
+                      </div>
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
       )}
 
       {/* Gallery Modal */}

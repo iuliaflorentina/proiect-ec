@@ -65,7 +65,7 @@ export function HeroSection() {
                                         <ArrowRight className="ml-2 h-4 w-4" />
                                     </Button>
                                 </Link>
-                                <Link to="/products?customizable=true">
+                                <Link to="/customize">
                                     <Button
                                         size="lg"
                                         variant="outline"
