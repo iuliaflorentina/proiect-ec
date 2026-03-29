@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '@/lib/firebase'
+import { compressImage } from '@/lib/optimize'
 import { useAuth } from '@/context/AuthContext'
 import { Loader2, Upload, X, Palette } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -63,11 +64,13 @@ export function GalleryItemModal({ isOpen, onClose, item = null, onSaveSuccess }
 
       // Upload image if a new file was selected
       if (file) {
-        const fileExtension = file.name.split('.').pop()
-        const fileName = `gallery/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExtension}`
+        // Compress and convert to WebP before upload
+        const optimizedFile = await compressImage(file, { maxWidth: 1024, quality: 0.8 });
+        
+        const fileName = `gallery/${Date.now()}_${Math.random().toString(36).substring(7)}.webp`
         const storageRef = ref(storage, fileName)
         
-        const snapshot = await uploadBytes(storageRef, file)
+        const snapshot = await uploadBytes(storageRef, optimizedFile)
         imageUrl = await getDownloadURL(snapshot.ref)
       }
 

@@ -14,7 +14,7 @@ export function HeroSection() {
             {/* Background image */}
             <div className="absolute inset-0">
                 <img
-                    src="../../public/photos/pink_f1.jfif"
+                    src="/photos/pink_f1.webp"
                     alt="Custom hand-painted sneakers with vibrant street art designs"
                     className="h-full w-full object-cover"
                 />

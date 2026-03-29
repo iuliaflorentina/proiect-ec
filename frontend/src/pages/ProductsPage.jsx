@@ -17,11 +17,22 @@ export default function ProductsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingProduct, setEditingProduct] = useState(null)
     
-    const [activeCategory, setActiveCategory] = useState('All')
-    const [customizableOnly, setCustomizableOnly] = useState(false)
     const [searchParams, setSearchParams] = useSearchParams()
+    const initialCategory = searchParams.get('category') || 'All'
+    const [activeCategory, setActiveCategory] = useState(initialCategory)
+    const [customizableOnly, setCustomizableOnly] = useState(false)
     const { addItem } = useCart()
     const [added, setAdded] = useState({})
+
+    const updateCategory = (cat) => {
+        if (cat === 'All') {
+            searchParams.delete('category')
+        } else {
+            searchParams.set('category', cat)
+        }
+        setSearchParams(searchParams)
+        setActiveCategory(cat)
+    }
 
     const searchQuery = searchParams.get('search') || ''
 
@@ -44,6 +55,15 @@ export default function ProductsPage() {
         fetchProducts()
     }, [])
 
+    useEffect(() => {
+        const category = searchParams.get('category')
+        if (category) {
+            setActiveCategory(category)
+        } else if (activeCategory !== 'All') {
+            setActiveCategory('All')
+        }
+    }, [searchParams])
+
     const filtered = useMemo(() => {
         return products.filter((p) => {
             if (activeCategory !== 'All' && p.category !== activeCategory) return false
@@ -55,7 +75,7 @@ export default function ProductsPage() {
                 const matchesArtist = p.artist?.toLowerCase().includes(query)
                 if (!matchesName && !matchesCategory && !matchesArtist) return false
             }
-            if (!isAdmin && p.type === '3d') return false
+            if (!isAdmin && p.type !== '2d') return false
             return true
         })
     }, [products, activeCategory, customizableOnly, searchQuery, isAdmin])
@@ -99,7 +119,7 @@ export default function ProductsPage() {
                     {CATEGORIES.map((cat) => (
                         <button
                             key={cat}
-                            onClick={() => setActiveCategory(cat)}
+                            onClick={() => updateCategory(cat)}
                             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeCategory === cat
                                 ? 'bg-primary text-primary-foreground'
                                 : 'border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40'
@@ -134,6 +154,7 @@ export default function ProductsPage() {
                                 src={product.image}
                                 alt={product.name}
                                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                loading="lazy"
                             />
                             {product.badge && (
                                 <div className="absolute left-3 top-3">

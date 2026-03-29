@@ -6,6 +6,7 @@ import {
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '@/lib/firebase'
+import { compressImage } from '@/lib/optimize'
 import { Button } from '@/components/ui/button'
 import { useCart } from '@/context/CartContext'
 import { useAuth } from '@/context/AuthContext'
@@ -143,10 +144,13 @@ const CustomizerPage = () => {
 
         setIsSaving(true)
         try {
+            // Compress and convert to WebP before upload
+            const optimizedFile = await compressImage(file, { maxWidth: 512, quality: 0.7 });
+            
             // Upload to Firebase to keep localStorage size tiny and URLs permanent
             const stickerId = `custom-sticker-${Date.now()}`
             const stickerRef = ref(storage, `stickers/${stickerId}`)
-            const snapshot = await uploadBytes(stickerRef, file)
+            const snapshot = await uploadBytes(stickerRef, optimizedFile)
             const uploadedSrc = await getDownloadURL(snapshot.ref)
 
             if (selectedProduct?.type === '3d') {

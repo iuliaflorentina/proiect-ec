@@ -10,4 +10,18 @@ export default defineConfig({
     },
   },
   envPrefix: ['VITE_', 'PUBLISHABLE_'],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+          'three-drei': ['@react-three/drei'],
+          'three-fiber': ['@react-three/fiber'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          konva: ['konva', 'react-konva'],
+          stripe: ['@stripe/react-stripe-js', '@stripe/stripe-js'],
+        }
+      }
+    }
+  }
 })

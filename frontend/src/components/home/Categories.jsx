@@ -1,34 +1,57 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 
-const categories = [
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
+const initialCategories = [
     {
         name: 'Custom Sneakers',
         slug: 'sneakers',
-        image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&q=80',
-        count: 5,
+        image: '/photos/pink_f1.webp',
+        count: 0,
     },
     {
         name: 'Painted Hoodies',
         slug: 'hoodies',
-        image: 'https://images.unsplash.com/photo-1556821840-3a63f15732ce?w=600&q=80',
-        count: 3,
+        image: '/photos/paintedHoodie.webp',
+        count: 0,
     },
     {
         name: 'Designer Jackets',
         slug: 'jackets',
-        image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=600&q=80',
-        count: 3,
+        image: '/photos/paintedJacket.webp',
+        count: 0,
     },
     {
         name: 'Personalized Tees',
         slug: 'tees',
-        image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=600&q=80',
-        count: 2,
+        image: '/photos/paintedT-shirt.webp',
+        count: 0,
     },
 ]
 
 export function Categories() {
+    const [categories, setCategories] = useState(initialCategories)
+
+    useEffect(() => {
+        const fetchCounts = async () => {
+            try {
+                const res = await fetch(`${API}/api/products/counts`)
+                if (res.ok) {
+                    const counts = await res.json()
+                    setCategories(prev => prev.map(cat => ({
+                        ...cat,
+                        count: counts[cat.slug] || 0
+                    })))
+                }
+            } catch (error) {
+                console.error('Error fetching category counts:', error)
+            }
+        }
+        fetchCounts()
+    }, [])
+
     return (
         <section className="bg-secondary/30">
             <div className="mx-auto max-w-7xl px-4 py-20 lg:px-8">
@@ -57,7 +80,7 @@ export function Categories() {
                             <div className="relative p-4">
                                 <h3 className="text-lg font-semibold text-foreground">{cat.name}</h3>
                                 <div className="mt-1 flex items-center gap-1 text-sm text-primary">
-                                    <span>{cat.count} products</span>
+                                    <span>{cat.count} {cat.count === 1 ? 'product' : 'products'}</span>
                                     <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-1" />
                                 </div>
                             </div>
