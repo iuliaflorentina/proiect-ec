@@ -49,6 +49,39 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+/**
+ * Transparent Image Proxy
+ * Used to bypass CORS for 3D textures/decals from external origins (Firebase Storage)
+ */
+app.get('/api/proxy', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send('URL is required');
+
+  try {
+    // Only allow specific trusted domains (optional, but safer)
+    if (!url.includes('firebasestorage.googleapis.com') && !url.includes('cdn-icons-png.flaticon.com') && !url.includes('api.iconify.design')) {
+      return res.status(403).send('Forbidden origin');
+    }
+
+    const response = await axios({
+      url,
+      method: 'GET',
+      responseType: 'stream',
+      timeout: 10000
+    });
+
+    // Mirror necessary headers for 3D textures
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Content-Type', response.headers['content-type']);
+    res.set('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+    
+    response.data.pipe(res);
+  } catch (error) {
+    console.error('Proxy error:', error.message);
+    res.status(500).send('Error fetching remote image');
+  }
+});
+
 // Middleware to check if user is admin
 const isAdmin = async (req, res, next) => {
   try {
@@ -101,7 +134,7 @@ app.post('/api/orders', authenticate, async (req, res) => {
       total,
       paymentMethod,
       paymentId: paymentId || null,
-      status: paymentMethod === 'card' ? 'paid' : 'pending_delivery',
+      status: paymentMethod === 'card' ? 'paid' : 'pending',
       userId: req.user.uid,
       userEmail: req.user.email,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -265,7 +298,7 @@ app.patch('/api/admin/orders/:id/status', authenticate, isAdmin, async (req, res
   const { id } = req.params;
   const { status } = req.body;
 
-  const validStatuses = ['paid', 'received', 'processing', 'shipped', 'delivered'];
+  const validStatuses = ['pending', 'paid', 'received', 'processing', 'shipped', 'delivered'];
   if (!validStatuses.includes(status)) {
     return res.status(400).send('Invalid status');
   }
