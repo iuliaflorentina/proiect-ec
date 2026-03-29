@@ -49,7 +49,7 @@ export function Navbar() {
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                         <Palette className="h-4 w-4" />
                     </span>
-                    <span>BrushCraft Co.</span>
+                    <span className="font-serif italic">Juliette Deliveries.</span>
                 </Link>
 
                 {/* Search Bar */}

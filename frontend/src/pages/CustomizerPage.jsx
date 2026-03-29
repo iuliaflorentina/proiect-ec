@@ -99,6 +99,10 @@ const CustomizerPage = () => {
         return location.state?.customization?.selectedColor || '#ffffff'
     })
 
+    const [baseColor, setBaseColor] = useState(() => {
+        return location.state?.customization?.baseColor || '#ffffff'
+    })
+
     const [isSaving, setIsSaving] = useState(false)
     const [resolvedUrls, setResolvedUrls] = useState({}) // { 'local:id': 'blob:...' }
     const isReadOnly = location.state?.readOnly === true
@@ -293,7 +297,7 @@ const CustomizerPage = () => {
                 customizable: true,
                 productId: selectedProduct.id,
                 designId: designId,
-                customization: { stickers, decals3D, selectedColor }
+                customization: { stickers, decals3D, selectedColor, baseColor }
             })
             alert('Custom 3D design added to cart!')
         } else {
@@ -306,7 +310,7 @@ const CustomizerPage = () => {
                 customizable: true,
                 productId: selectedProduct.id,
                 designId: designId,
-                customization: { stickers, selectedColor } 
+                customization: { stickers, selectedColor, baseColor } 
             })
             alert('Custom 2D design added to cart!')
         }
@@ -507,7 +511,7 @@ const CustomizerPage = () => {
                         <ProductViewer3D
                             ref={viewerRef}
                             product={selectedProduct}
-                            currentColor={selectedColor}
+                            currentColor={baseColor}
                             decals={decals3D.map(d => ({ ...d, imageUrl: getDisplayUrl(d.imageUrl) }))}
                             activeSticker={activeSticker ? { ...activeSticker, src: getDisplayUrl(activeSticker.src) } : null}
                             selectedId={selectedId}
@@ -521,6 +525,7 @@ const CustomizerPage = () => {
                         <ProductViewer2D
                             product={selectedProduct}
                             frontOrBack={activeView}
+                            baseColor={baseColor}
                             stickers={currentStickers.map(s => ({ ...s, src: getDisplayUrl(s.src) }))}
                             setStickers={setCurrentStickers}
                             selectedId={selectedId}
@@ -568,8 +573,30 @@ const CustomizerPage = () => {
                                     </div>
                                 </section>
 
+                                {selectedProduct.name.toLowerCase().includes('t-shirt') && (
+                                    <section>
+                                        <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Product Body Color</h3>
+                                        <div className="flex bg-secondary/20 p-1 rounded-lg border border-border w-fit">
+                                            <button
+                                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${baseColor === '#ffffff' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                                onClick={() => setBaseColor('#ffffff')}
+                                            >
+                                                <div className="w-3 h-3 rounded-full border border-border bg-white" />
+                                                WHITE
+                                            </button>
+                                            <button
+                                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${baseColor === '#000000' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                                onClick={() => setBaseColor('#000000')}
+                                            >
+                                                <div className="w-3 h-3 rounded-full border border-white/20 bg-black" />
+                                                BLACK
+                                            </button>
+                                        </div>
+                                    </section>
+                                )}
+
                                 <section>
-                                    <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Choose Color / Tint</h3>
+                                    <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Choose Element Tint</h3>
                                     <div className="flex flex-wrap gap-3">
                                         {(selectedProduct.colors?.length > 0 ? selectedProduct.colors : DEFAULT_COLORS).map((color) => (
                                             <button
@@ -580,7 +607,7 @@ const CustomizerPage = () => {
                                             />
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-muted-foreground mt-3 italic">Affects both Product Body & Selected Icons</p>
+                                    <p className="text-[10px] text-muted-foreground mt-3 italic">Changes the color of your selected icons</p>
                                 </section>
 
                                 <section>

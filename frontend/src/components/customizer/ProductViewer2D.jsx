@@ -85,7 +85,7 @@ const Sticker = ({ shape, isSelected, onSelect, onChange }) => {
     )
 }
 
-const ProductViewer2D = ({ product, frontOrBack, stickers, setStickers, selectedId, setSelectedId }) => {
+const ProductViewer2D = ({ product, frontOrBack, stickers, setStickers, selectedId, setSelectedId, baseColor }) => {
     const containerRef = useRef(null)
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
@@ -155,6 +155,11 @@ const ProductViewer2D = ({ product, frontOrBack, stickers, setStickers, selected
                                 id="bg-image"
                                 image={productImage}
                                 {...bgProps}
+                                filters={baseColor === '#000000' ? [Konva.Filters.Invert] : []}
+                                onUpdate={(node) => {
+                                    if (baseColor === '#000000') node.cache();
+                                    else node.clearCache();
+                                }}
                             />
                         )}
                         {stickers.map((sticker, i) => (
