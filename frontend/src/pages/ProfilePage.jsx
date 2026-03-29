@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { ReviewModal } from '@/components/profile/ReviewModal'
 import { StatusStepper } from '@/components/profile/StatusStepper'
+import { InvoiceTemplate } from '@/components/profile/InvoiceTemplate'
+import { useRef } from 'react'
+import { FileText, Download } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -38,6 +41,17 @@ export default function ProfilePage() {
     product: null,
     orderId: null
   })
+
+  // Printing State
+  const printRef = useRef()
+  const [printingOrder, setPrintingOrder] = useState(null)
+
+  const handlePrint = (order) => {
+    setPrintingOrder(order)
+    setTimeout(() => {
+      window.print()
+    }, 500)
+  }
 
   const fetchOrders = async () => {
     try {
@@ -206,6 +220,28 @@ export default function ProfilePage() {
                   </span>
                   <p className="text-lg font-bold text-foreground font-orbitron">${parseFloat(order.total || 0).toFixed(2)}</p>
                 </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                  {order.receiptUrl && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="gap-2 text-[10px] font-bold uppercase border-primary/20 hover:bg-primary/5 transition-colors flex-1 sm:flex-none"
+                      onClick={() => window.open(order.receiptUrl, '_blank')}
+                    >
+                      <Download className="h-3 w-3" />
+                      Receipt
+                    </Button>
+                  )}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="gap-2 text-[10px] font-bold uppercase border-border hover:bg-secondary/50 flex-1 sm:flex-none"
+                    onClick={() => handlePrint(order)}
+                  >
+                    <FileText className="h-3 w-3" />
+                    Invoice
+                  </Button>
+                </div>
               </div>
 
               {/* Status Stepper */}
@@ -281,6 +317,10 @@ export default function ProfilePage() {
           orderId={reviewModal.orderId}
         />
       )}
+      {/* Hidden Print Area */}
+      <div className="hidden print:block print-area fixed inset-0 z-[9999] bg-white">
+         <InvoiceTemplate ref={printRef} order={printingOrder} />
+      </div>
     </div>
   )
 }

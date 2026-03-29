@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, User, Calendar, DollarSign, Sparkles, Download, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette, Home, Star, ShoppingCart, Ticket } from 'lucide-react'
+import { Package, User, Calendar, DollarSign, Sparkles, Download, FileText, Database, Loader2, Image as ImageIcon, Trash2, Edit, Plus, Palette, Home, Star, ShoppingCart, Ticket } from 'lucide-react'
+import { InvoiceTemplate } from '@/components/profile/InvoiceTemplate'
+import { useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/context/AuthContext'
@@ -27,6 +29,17 @@ export default function AdminPage() {
   const [coupons, setCoupons] = useState([])
   const [newCoupon, setNewCoupon] = useState({ code: '', type: 'percent', value: '', minAmount: '', expiresAt: '' })
   const [isCreatingCoupon, setIsCreatingCoupon] = useState(false)
+  
+  // Printing State
+  const printRef = useRef()
+  const [printingOrder, setPrintingOrder] = useState(null)
+
+  const handlePrint = (order) => {
+    setPrintingOrder(order)
+    setTimeout(() => {
+      window.print()
+    }, 500)
+  }
 
   // Search and Filter State
   const [searchTerm, setSearchTerm] = useState('')
@@ -475,6 +488,7 @@ export default function AdminPage() {
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Items</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Total</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Status</th>
+                      <th className="px-6 py-4 text-left font-semibold text-foreground">Invoicing</th>
                       <th className="px-6 py-4 text-left font-semibold text-foreground">Date</th>
                     </tr>
                   </thead>
@@ -601,6 +615,28 @@ export default function AdminPage() {
                             <option value="shipped">On its way</option>
                             <option value="delivered">Done</option>
                           </select>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            {order.receiptUrl && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-primary hover:bg-primary/10" 
+                                onClick={() => window.open(order.receiptUrl, '_blank')}
+                                title="View Stripe Receipt"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <button
+                              onClick={() => handlePrint(order)}
+                              className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-secondary/20 transition-colors"
+                              title="Print Juliette Invoice"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-muted-foreground">
                           <div className="flex items-center gap-1.5 whitespace-nowrap">
@@ -856,6 +892,10 @@ export default function AdminPage() {
           onSaveSuccess={fetchGallery}
         />
       )}
+      {/* Hidden Print Area */}
+      <div className="hidden print:block print-area fixed inset-0 z-[9999] bg-white">
+         <InvoiceTemplate ref={printRef} order={printingOrder} />
+      </div>
     </div>
   )
 }
