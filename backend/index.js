@@ -12,9 +12,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Caching middleware for public GE endpoints
-const cacheMiddleware = (seconds) => (req, res, next) => {
-  res.set('Cache-Control', `public, max-age=${seconds}`);
+// Caching middleware that ensures data is always fresh via ETags (revalidation)
+// browser caches the response, but checks with server each time
+const cacheMiddleware = (seconds = 0) => (req, res, next) => {
+  if (seconds > 0) {
+    res.set('Cache-Control', `public, max-age=${seconds}, no-cache, must-revalidate`);
+  } else {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
   next();
 };
 
@@ -256,7 +261,28 @@ app.get('/api/admin/orders', authenticate, isAdmin, async (req, res) => {
   }
 })
 
-app.get('/api/products/counts', cacheMiddleware(300), async (req, res) => {
+app.patch('/api/admin/orders/:id/status', authenticate, isAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  const validStatuses = ['paid', 'received', 'processing', 'shipped', 'delivered'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).send('Invalid status');
+  }
+
+  try {
+    await db.collection('orders').doc(id).update({
+      status,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    res.status(200).send({ id, status });
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).send('Internal Server Error');
+  }
+})
+
+app.get('/api/products/counts', async (req, res) => {
   try {
     const snapshot = await db.collection('products').get();
     const counts = {
@@ -279,7 +305,7 @@ app.get('/api/products/counts', cacheMiddleware(300), async (req, res) => {
   }
 });
 
-app.get('/api/products', cacheMiddleware(300), async (req, res) => {
+app.get('/api/products', cacheMiddleware(10), async (req, res) => {
   try {
     const snapshot = await db.collection('products').orderBy('createdAt', 'desc').get();
     const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -320,7 +346,21 @@ app.put('/api/products/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/gallery', cacheMiddleware(300), async (req, res) => {
+app.delete('/api/products/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    // Optional: Also delete associated reviews? 
+    // Usually better to keep them or mark product as archived, 
+    // but the user asked for "delete method".
+    await db.collection('products').doc(productId).delete();
+    res.status(200).send({ id: productId });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+app.get('/api/gallery', cacheMiddleware(10), async (req, res) => {
   try {
     const snapshot = await db.collection('gallery').orderBy('createdAt', 'desc').get();
     const galleryItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -424,9 +464,9 @@ app.post('/api/reviews', authenticate, async (req, res) => {
       return res.status(403).send('Unauthorized: You can only review your own orders');
     }
 
-    // Current orders use "paid" status from Stripe
-    if (orderData.status !== 'paid' && orderData.status !== 'delivered') {
-      return res.status(400).send('Order must be paid or delivered to write a review');
+    // User can only write a review once the order is 'delivered'
+    if (orderData.status !== 'delivered') {
+      return res.status(400).send('You can only review items after the order is delivered');
     }
 
     const hasProduct = (orderData.items || []).some(item => 
